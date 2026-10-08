@@ -10,7 +10,7 @@ from app.core.security import (
     hash_password,
     verify_password,
 )
-from app.models.user import User
+from app.models.user import User, UserRole
 from app.repositories import user_repository
 from app.schemas.auth import LoginRequest
 from app.schemas.user import UserCreate
@@ -29,7 +29,7 @@ def _dummy_password_hash() -> str:
     return hash_password("dummy-password-for-timing")
 
 
-def register(db: Session, data: UserCreate) -> User:
+def _create_user(db: Session, data: UserCreate, role: UserRole) -> User:
     if user_repository.get_by_email(db, data.email) is not None:
         raise EmailAlreadyRegisteredError(data.email)
 
@@ -40,6 +40,7 @@ def register(db: Session, data: UserCreate) -> User:
             full_name=data.full_name,
             phone=data.phone,
             password_hash=hash_password(data.password),
+            role=role,
         )
         db.commit()
     except IntegrityError:
@@ -47,6 +48,16 @@ def register(db: Session, data: UserCreate) -> User:
         db.rollback()
         raise EmailAlreadyRegisteredError(data.email)
     return user
+
+
+def register(db: Session, data: UserCreate) -> User:
+    """Public sign-up: always creates a USER."""
+    return _create_user(db, data, UserRole.USER)
+
+
+def create_admin(db: Session, data: UserCreate) -> User:
+    """Used by the CLI to bootstrap admins; never exposed over HTTP."""
+    return _create_user(db, data, UserRole.ADMIN)
 
 
 def login(db: Session, data: LoginRequest) -> str:

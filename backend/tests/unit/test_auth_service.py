@@ -86,3 +86,17 @@ def test_get_user_from_token_rejects_deleted_user(db: Session) -> None:
 
     with pytest.raises(auth_service.InvalidCredentialsError):
         auth_service.get_user_from_token(db, token)
+
+
+def test_create_admin_creates_admin(db: Session) -> None:
+    user = auth_service.create_admin(db, make_user_data("admin@example.com"))
+
+    assert user.role == UserRole.ADMIN
+    assert verify_password("s3cret-pass", user.password_hash)
+
+
+def test_create_admin_duplicate_email_raises(db: Session) -> None:
+    auth_service.register(db, make_user_data("admin@example.com"))
+
+    with pytest.raises(auth_service.EmailAlreadyRegisteredError):
+        auth_service.create_admin(db, make_user_data("admin@example.com"))

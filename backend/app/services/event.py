@@ -1,3 +1,5 @@
+from datetime import UTC, datetime
+
 from sqlalchemy.orm import Session
 
 from app.models.event import Event, EventStatus
@@ -37,6 +39,11 @@ def get_visible_event(db: Session, event_id: int, user: User) -> Event:
     if event.status != EventStatus.ACTIVE and not user.is_admin:
         raise EventNotFoundError(event_id)
     return event
+
+
+
+def list_catalog(db: Session, now: datetime | None = None) -> list[Event]:
+    return event_repository.list_active(db, now or datetime.now(UTC))
 
 
 def update_event(db: Session, event_id: int, data: EventUpdate) -> Event:

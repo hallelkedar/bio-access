@@ -23,6 +23,13 @@ def create_event(
     return EventRead.model_validate(event_service.create_event(db, data, admin))
 
 
+@router.get("", response_model=list[EventRead])
+def list_catalog(
+    db: Session = Depends(get_db), _: User = Depends(get_current_user)
+) -> list[EventRead]:
+    return [EventRead.model_validate(event) for event in event_service.list_catalog(db)]
+
+
 @router.get("/{event_id}", response_model=EventRead)
 def get_event(
     event_id: int, db: Session = Depends(get_db), user: User = Depends(get_current_user)

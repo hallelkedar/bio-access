@@ -124,3 +124,19 @@ def test_delete_event_with_tickets_rejected(
 
     with pytest.raises(event_service.EventNotDeletableError):
         event_service.delete_event(db, event.id)
+
+
+def test_catalog_lists_only_active_not_ended_events_soonest_first(
+    db: Session, make_event: MakeEvent
+) -> None:
+    now = datetime(2027, 6, 1, 12, 0, tzinfo=UTC)
+    later = make_event(EventStatus.ACTIVE, starts_at=now + timedelta(days=2), ends_at=now + timedelta(days=2, hours=3))
+    sooner = make_event(EventStatus.ACTIVE, starts_at=now + timedelta(days=1), ends_at=now + timedelta(days=1, hours=3))
+    running = make_event(EventStatus.ACTIVE, starts_at=now - timedelta(hours=1), ends_at=now + timedelta(hours=2))
+    make_event(EventStatus.ACTIVE, starts_at=now - timedelta(days=1), ends_at=now - timedelta(hours=20))  # ended
+    make_event(EventStatus.DRAFT, starts_at=now + timedelta(days=1), ends_at=now + timedelta(days=1, hours=3))
+    make_event(EventStatus.CLOSED, starts_at=now + timedelta(days=1), ends_at=now + timedelta(days=1, hours=3))
+
+    catalog = event_service.list_catalog(db, now=now)
+
+    assert [event.id for event in catalog] == [running.id, sooner.id, later.id]

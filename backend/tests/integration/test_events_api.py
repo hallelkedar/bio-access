@@ -121,3 +121,20 @@ def test_delete_active_returns_409(
     response = client.delete(f"{URL}/{event.id}", headers=auth_headers(make_user(UserRole.ADMIN)))
 
     assert response.status_code == 409
+
+
+def test_catalog_shows_only_active_events(
+    client: TestClient, make_user: MakeUser, make_event: MakeEvent, auth_headers: Headers
+) -> None:
+    active = make_event(EventStatus.ACTIVE)
+    make_event(EventStatus.DRAFT)
+    make_event(EventStatus.CLOSED)
+
+    response = client.get(URL, headers=auth_headers(make_user()))
+
+    assert response.status_code == 200
+    assert [event["id"] for event in response.json()] == [active.id]
+
+
+def test_catalog_requires_login(client: TestClient) -> None:
+    assert client.get(URL).status_code == 401

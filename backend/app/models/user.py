@@ -27,3 +27,7 @@ class User(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=func.now()
     )
+
+    @property
+    def is_admin(self) -> bool:
+        return self.role == UserRole.ADMIN

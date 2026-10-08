@@ -1,4 +1,5 @@
 from collections.abc import Callable, Iterator
+from datetime import UTC, datetime, timedelta
 from itertools import count
 
 import pytest
@@ -12,6 +13,7 @@ from app.core.security import create_access_token
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
+from app.models.event import Event, EventStatus
 from app.models.user import User, UserRole
 from app.repositories import user_repository
 
@@ -93,3 +95,30 @@ def auth_headers() -> Callable[[User], dict[str, str]]:
         return {"Authorization": f"Bearer {create_access_token(user.id, user.role)}"}
 
     return _headers
+
+
+@pytest.fixture
+def make_event(db: Session, make_user: Callable[..., User]) -> Callable[..., Event]:
+    """Create and commit an event (tomorrow, 4 hours long) created by a fresh admin."""
+
+    def _make(status: EventStatus = EventStatus.DRAFT, **overrides: object) -> Event:
+        starts_at = datetime.now(UTC) + timedelta(days=1)
+        fields: dict[str, object] = {
+            "name": "Test Concert",
+            "location": "Tel Aviv",
+            "starts_at": starts_at,
+            "ends_at": starts_at + timedelta(hours=4),
+            "capacity": 100,
+            "price_cents": 5000,
+            "currency": "ILS",
+            "status": status,
+            **overrides,
+        }
+        if "created_by" not in fields:
+            fields["created_by"] = make_user(UserRole.ADMIN).id
+        event = Event(**fields)
+        db.add(event)
+        db.commit()
+        return event
+
+    return _make

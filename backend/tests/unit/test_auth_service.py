@@ -1,7 +1,7 @@
 import pytest
 from sqlalchemy.orm import Session
 
-from app.core.security import decode_access_token, verify_password
+from app.core.security import create_access_token, decode_access_token, verify_password
 from app.models.user import UserRole
 from app.schemas.auth import LoginRequest
 from app.schemas.user import UserCreate
@@ -63,3 +63,26 @@ def test_login_wrong_password_raises(db: Session) -> None:
 def test_login_unknown_email_raises(db: Session) -> None:
     with pytest.raises(auth_service.InvalidCredentialsError):
         auth_service.login(db, LoginRequest(email="nobody@example.com", password="s3cret-pass"))
+
+
+def test_get_user_from_token_returns_user(db: Session) -> None:
+    user = auth_service.register(db, make_user_data())
+
+    found = auth_service.get_user_from_token(db, create_access_token(user.id, user.role))
+
+    assert found.id == user.id
+
+
+def test_get_user_from_token_rejects_invalid_token(db: Session) -> None:
+    with pytest.raises(auth_service.InvalidCredentialsError):
+        auth_service.get_user_from_token(db, "not-a-jwt")
+
+
+def test_get_user_from_token_rejects_deleted_user(db: Session) -> None:
+    user = auth_service.register(db, make_user_data())
+    token = create_access_token(user.id, user.role)
+    db.delete(user)
+    db.commit()
+
+    with pytest.raises(auth_service.InvalidCredentialsError):
+        auth_service.get_user_from_token(db, token)

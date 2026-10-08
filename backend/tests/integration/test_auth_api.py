@@ -63,3 +63,19 @@ def test_login_wrong_password_and_unknown_email_look_the_same(client: TestClient
 
     assert wrong_password.status_code == unknown_email.status_code == 401
     assert wrong_password.json() == unknown_email.json()
+
+
+def test_me_returns_logged_in_user(client: TestClient) -> None:
+    client.post(REGISTER_URL, json=VALID_BODY)
+    token = client.post(
+        LOGIN_URL, json={"email": "dana@example.com", "password": "s3cret-pass"}
+    ).json()["access_token"]
+
+    response = client.get("/api/auth/me", headers={"Authorization": f"Bearer {token}"})
+
+    assert response.status_code == 200
+    assert response.json()["email"] == "dana@example.com"
+
+
+def test_me_without_token_returns_401(client: TestClient) -> None:
+    assert client.get("/api/auth/me").status_code == 401

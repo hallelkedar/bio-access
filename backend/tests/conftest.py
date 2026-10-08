@@ -1,4 +1,5 @@
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
+from itertools import count
 
 import pytest
 from fastapi.testclient import TestClient
@@ -7,9 +8,12 @@ from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401  (registers all models on Base.metadata)
 from app.core.config import get_settings
+from app.core.security import create_access_token
 from app.db.base import Base
 from app.db.session import get_db
 from app.main import app
+from app.models.user import User, UserRole
+from app.repositories import user_repository
 
 TEST_DB_NAME = "bioaccess_test"
 
@@ -59,3 +63,33 @@ def client(db: Session) -> Iterator[TestClient]:
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()
+
+
+_user_counter = count(1)
+
+
+@pytest.fixture
+def make_user(db: Session) -> Callable[..., User]:
+    """Create and commit a user with the given role (password is not usable)."""
+
+    def _make(role: UserRole = UserRole.USER, email: str | None = None) -> User:
+        user = user_repository.create(
+            db,
+            email=email or f"{role.value.lower()}{next(_user_counter)}@example.com",
+            full_name=f"Test {role.value.title()}",
+            phone=None,
+            password_hash="not-a-real-hash",
+            role=role,
+        )
+        db.commit()
+        return user
+
+    return _make
+
+
+@pytest.fixture
+def auth_headers() -> Callable[[User], dict[str, str]]:
+    def _headers(user: User) -> dict[str, str]:
+        return {"Authorization": f"Bearer {create_access_token(user.id, user.role)}"}
+
+    return _headers

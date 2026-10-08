@@ -3,7 +3,13 @@ from functools import cache
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from app.core.security import create_access_token, hash_password, verify_password
+from app.core.security import (
+    InvalidTokenError,
+    create_access_token,
+    decode_access_token,
+    hash_password,
+    verify_password,
+)
 from app.models.user import User
 from app.repositories import user_repository
 from app.schemas.auth import LoginRequest
@@ -52,3 +58,15 @@ def login(db: Session, data: LoginRequest) -> str:
     if not verify_password(data.password, user.password_hash):
         raise InvalidCredentialsError()
     return create_access_token(user.id, user.role)
+
+
+def get_user_from_token(db: Session, token: str) -> User:
+    """Return the user a token belongs to; role is read from the DB, not the token."""
+    try:
+        payload = decode_access_token(token)
+    except InvalidTokenError:
+        raise InvalidCredentialsError()
+    user = user_repository.get_by_id(db, payload.user_id)
+    if user is None:
+        raise InvalidCredentialsError()
+    return user

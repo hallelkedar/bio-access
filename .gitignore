@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+dist/
+*.log
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Local HTTPS certs (mkcert)
+*.pem
+*.key
+
+# IDE / OS
+.vscode/
+.idea/
+.DS_Store

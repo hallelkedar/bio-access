@@ -78,3 +78,32 @@ def test_only_users_buy_tickets(
 
 def test_requires_login(client: TestClient) -> None:
     assert client.post(URL, json={"event_id": 1}).status_code == 401
+
+
+def test_my_tickets_returns_only_own(
+    client: TestClient, make_user: MakeUser, make_event: MakeEvent, auth_headers: Headers
+) -> None:
+    me, other = make_user(), make_user()
+    mine = make_event(EventStatus.ACTIVE, name="Mine")
+    theirs = make_event(EventStatus.ACTIVE, name="Theirs")
+    client.post(URL, json={"event_id": mine.id}, headers=auth_headers(me))
+    client.post(URL, json={"event_id": theirs.id}, headers=auth_headers(other))
+
+    response = client.get(f"{URL}/me", headers=auth_headers(me))
+
+    assert response.status_code == 200
+    [ticket] = response.json()
+    assert ticket["event"]["name"] == "Mine"
+    assert ticket["status"] == "PENDING_PAYMENT"
+    assert ticket["qr_token"] is None
+
+
+def test_my_tickets_empty(client: TestClient, make_user: MakeUser, auth_headers: Headers) -> None:
+    response = client.get(f"{URL}/me", headers=auth_headers(make_user()))
+
+    assert response.status_code == 200
+    assert response.json() == []
+
+
+def test_my_tickets_requires_login(client: TestClient) -> None:
+    assert client.get(f"{URL}/me").status_code == 401

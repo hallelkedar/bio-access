@@ -102,3 +102,43 @@ def test_running_event_still_sells(db: Session, make_user: MakeUser, make_event:
     )
 
     assert ticket_service.create_ticket(db, make_user(), event.id).status == TicketStatus.PENDING_PAYMENT
+
+
+def test_my_tickets_only_own_sorted_by_event_start(
+    db: Session, make_user: MakeUser, make_event: MakeEvent
+) -> None:
+    me, other = make_user(), make_user()
+    now = datetime.now(UTC)
+    later = make_event(EventStatus.ACTIVE, starts_at=now + timedelta(days=5), ends_at=now + timedelta(days=5, hours=2))
+    sooner = make_event(EventStatus.ACTIVE, starts_at=now + timedelta(days=1), ends_at=now + timedelta(days=1, hours=2))
+    ticket_service.create_ticket(db, me, later.id)
+    ticket_service.create_ticket(db, me, sooner.id)
+    ticket_service.create_ticket(db, other, sooner.id)
+
+    mine = ticket_service.list_my_tickets(db, me)
+
+    assert [t.event.id for t in mine] == [sooner.id, later.id]
+    assert mine[0].event.name == sooner.name
+
+
+@pytest.mark.parametrize(
+    ("status", "shows_qr"),
+    [
+        (TicketStatus.PENDING_PAYMENT, False),
+        (TicketStatus.VALID, True),
+        (TicketStatus.ENTERED, False),
+        (TicketStatus.CANCELLED, False),
+    ],
+)
+def test_qr_token_only_for_valid_tickets(
+    db: Session, make_user: MakeUser, make_event: MakeEvent, status: TicketStatus, shows_qr: bool
+) -> None:
+    user = make_user()
+    ticket = ticket_service.create_ticket(db, user, make_event(EventStatus.ACTIVE).id)
+    ticket.status = status
+    db.commit()
+
+    [mine] = ticket_service.list_my_tickets(db, user)
+
+    assert mine.status == status
+    assert (mine.qr_token == ticket.qr_token) if shows_qr else (mine.qr_token is None)

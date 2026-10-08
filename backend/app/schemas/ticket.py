@@ -19,3 +19,18 @@ class TicketRead(BaseModel):
     status: TicketStatus
     purchased_at: datetime
     entered_at: datetime | None
+
+
+class EventSummary(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    name: str
+    location: str
+    starts_at: datetime
+    ends_at: datetime
+
+
+class MyTicketRead(TicketRead):
+    event: EventSummary
+    qr_token: str | None

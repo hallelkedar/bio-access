@@ -7,6 +7,7 @@ from app.models.event import EventStatus
 from app.models.ticket import Ticket, TicketStatus
 from app.models.user import User
 from app.repositories import event_repository, ticket_repository
+from app.schemas.ticket import EventSummary, MyTicketRead
 from app.services.event import EventNotFoundError
 
 
@@ -69,3 +70,19 @@ def create_ticket(db: Session, user: User, event_id: int, now: datetime | None =
         db.rollback()  # releases the row lock immediately
         raise
     return ticket
+
+
+def list_my_tickets(db: Session, user: User) -> list[MyTicketRead]:
+    """The QR token is only revealed for VALID (paid, not yet used) tickets."""
+    return [
+        MyTicketRead(
+            id=ticket.id,
+            event_id=ticket.event_id,
+            status=ticket.status,
+            purchased_at=ticket.purchased_at,
+            entered_at=ticket.entered_at,
+            event=EventSummary.model_validate(ticket.event),
+            qr_token=ticket.qr_token if ticket.status == TicketStatus.VALID else None,
+        )
+        for ticket in ticket_repository.list_by_user(db, user.id)
+    ]

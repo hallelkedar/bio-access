@@ -3,12 +3,13 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.api import events, routes_auth
+from app.api import events, routes_auth, tickets
 from app.db.session import get_db
 
 app = FastAPI(title="BioAccess")
 app.include_router(routes_auth.router)
 app.include_router(events.router)
+app.include_router(tickets.router)
 
 
 @app.get("/health")

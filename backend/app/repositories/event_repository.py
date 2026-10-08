@@ -11,6 +11,12 @@ def get_by_id(db: Session, event_id: int) -> Event | None:
 
 
 
+
+def get_by_id_for_update(db: Session, event_id: int) -> Event | None:
+    """Load the event and lock its row until the transaction ends (SELECT ... FOR UPDATE)."""
+    return db.scalars(select(Event).where(Event.id == event_id).with_for_update()).first()
+
+
 def list_active(db: Session, now: datetime) -> list[Event]:
     """ACTIVE events that have not ended yet, soonest first."""
     query = (

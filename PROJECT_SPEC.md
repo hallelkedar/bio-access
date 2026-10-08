@@ -19,7 +19,7 @@
 | Layer | Technology |
 |---|---|
 | Frontend | React (Vite), TypeScript, React Router, Axios, Tailwind CSS, lucide-react |
-| Backend | Python 3.11+, FastAPI, Uvicorn, Pydantic v2 + pydantic-settings, SQLAlchemy 2.x + Alembic, python-jose (JWT), passlib[bcrypt], slowapi, httpx |
+| Backend | Python 3.11+, FastAPI, Uvicorn, Pydantic v2 + pydantic-settings, SQLAlchemy 2.x + Alembic, python-jose (JWT), bcrypt, slowapi, httpx |
 | Database | PostgreSQL 15+ |
 | Realtime | FastAPI WebSockets (WSS) |
 | **Face recognition (cloud)** | **AWS Rekognition** via `boto3` (Collections, IndexFaces, SearchFacesByImage, DetectFaces). Alternatives: Azure Face (needs Limited Access approval), Face++, Luxand |

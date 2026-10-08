@@ -1,8 +1,9 @@
 import pytest
 from sqlalchemy.orm import Session
 
-from app.core.security import verify_password
+from app.core.security import decode_access_token, verify_password
 from app.models.user import UserRole
+from app.schemas.auth import LoginRequest
 from app.schemas.user import UserCreate
 from app.services import auth as auth_service
 
@@ -32,3 +33,33 @@ def test_register_duplicate_email_is_case_insensitive(db: Session) -> None:
 
     with pytest.raises(auth_service.EmailAlreadyRegisteredError):
         auth_service.register(db, make_user_data("DANA@Example.com"))
+
+
+def test_login_returns_token_for_user(db: Session) -> None:
+    user = auth_service.register(db, make_user_data())
+
+    token = auth_service.login(db, LoginRequest(email="dana@example.com", password="s3cret-pass"))
+
+    payload = decode_access_token(token)
+    assert payload.user_id == user.id
+    assert payload.role == UserRole.USER
+
+
+def test_login_email_is_case_insensitive(db: Session) -> None:
+    auth_service.register(db, make_user_data())
+
+    token = auth_service.login(db, LoginRequest(email="DANA@example.com", password="s3cret-pass"))
+
+    assert token
+
+
+def test_login_wrong_password_raises(db: Session) -> None:
+    auth_service.register(db, make_user_data())
+
+    with pytest.raises(auth_service.InvalidCredentialsError):
+        auth_service.login(db, LoginRequest(email="dana@example.com", password="wrong-pass"))
+
+
+def test_login_unknown_email_raises(db: Session) -> None:
+    with pytest.raises(auth_service.InvalidCredentialsError):
+        auth_service.login(db, LoginRequest(email="nobody@example.com", password="s3cret-pass"))

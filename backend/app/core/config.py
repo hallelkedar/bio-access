@@ -2,6 +2,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Literal
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 # .env lives at the repo root: backend/app/core/config.py -> parents[3]
@@ -13,7 +14,7 @@ class Settings(BaseSettings):
 
     # Core (required)
     database_url: str
-    jwt_secret: str
+    jwt_secret: str = Field(min_length=32)  # HS256 needs >= 32 bytes
 
     jwt_expire_minutes: int = 60
     cors_origins: str = "https://localhost:5173"

@@ -39,3 +39,27 @@ def test_register_cannot_choose_role(client: TestClient) -> None:
 
     assert response.status_code == 201
     assert response.json()["role"] == "USER"
+
+
+LOGIN_URL = "/api/auth/login"
+
+
+def test_login_returns_bearer_token(client: TestClient) -> None:
+    client.post(REGISTER_URL, json=VALID_BODY)
+
+    response = client.post(LOGIN_URL, json={"email": "dana@example.com", "password": "s3cret-pass"})
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["token_type"] == "bearer"
+    assert body["access_token"]
+
+
+def test_login_wrong_password_and_unknown_email_look_the_same(client: TestClient) -> None:
+    client.post(REGISTER_URL, json=VALID_BODY)
+
+    wrong_password = client.post(LOGIN_URL, json={"email": "dana@example.com", "password": "wrong-pass"})
+    unknown_email = client.post(LOGIN_URL, json={"email": "nobody@example.com", "password": "s3cret-pass"})
+
+    assert wrong_password.status_code == unknown_email.status_code == 401
+    assert wrong_password.json() == unknown_email.json()

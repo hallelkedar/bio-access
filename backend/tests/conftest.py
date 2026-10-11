@@ -11,13 +11,15 @@ import app.models  # noqa: F401  (registers all models on Base.metadata)
 from app.core.config import get_settings
 from app.core.security import create_access_token
 from app.db.base import Base
-from app.db.session import get_db
+from app.db.session import get_db, get_session_factory
 from app.main import app
 from app.models.event import Event, EventStatus
 from app.models.user import User, UserRole
+from app.providers.notify import get_notifier
 from app.providers.payment import get_payment_provider
 from app.providers.payment.fake import FakePaymentProvider
 from app.repositories import user_repository
+from tests.fakes import RecordingNotifier
 
 TEST_DB_NAME = "bioaccess_test"
 
@@ -62,10 +64,20 @@ def db(engine: Engine) -> Iterator[Session]:
 
 
 @pytest.fixture
-def client(db: Session) -> Iterator[TestClient]:
+def notifier() -> RecordingNotifier:
+    return RecordingNotifier()
+
+
+@pytest.fixture
+def client(db: Session, notifier: RecordingNotifier) -> Iterator[TestClient]:
     app.dependency_overrides[get_db] = lambda: db
-    # Never call a real payment provider from tests, whatever .env says.
+    # Background tasks get their own sessions, still inside the test transaction.
+    app.dependency_overrides[get_session_factory] = lambda: (
+        lambda: Session(bind=db.bind, join_transaction_mode="create_savepoint")
+    )
+    # Never call a real payment provider or send real email/SMS from tests, whatever .env says.
     app.dependency_overrides[get_payment_provider] = FakePaymentProvider
+    app.dependency_overrides[get_notifier] = lambda: notifier
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

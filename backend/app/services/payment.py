@@ -63,32 +63,36 @@ def start_checkout(
 
 def handle_webhook(
     db: Session, provider: PaymentProvider, payload: bytes, headers: Mapping[str, str]
-) -> None:
+) -> int | None:
     """Apply a signed provider webhook to the payment and its ticket.
 
+    Returns the ticket id only when this webhook turned it VALID (so the caller
+    notifies exactly once); None in every other case.
     Raises InvalidWebhookError (from the provider) for a bad signature.
     Idempotent: a payment that already has a final status is never changed again,
     so a replayed or duplicated webhook has no effect.
     """
     event = provider.parse_webhook(payload, headers)
     if event is None:
-        return
+        return None
 
     try:
         payment = payment_repository.get_by_session_id_for_update(db, event.session_id)
         if payment is None or payment.status != PaymentStatus.CREATED:
             db.rollback()  # unknown session or already handled: nothing to do
-            return
+            return None
 
         ticket = ticket_repository.get_by_id_for_update(db, payment.ticket_id)
         if ticket is None:  # impossible while the FK exists
             raise RuntimeError(f"payment {payment.id} has no ticket")
         payment.provider_event_id = event.event_id
+        activated_ticket_id: int | None = None
 
         if event.type == WebhookEventType.PAYMENT_SUCCEEDED:
             payment.status = PaymentStatus.PAID
             if ticket.status == TicketStatus.PENDING_PAYMENT:
                 ticket.status = TicketStatus.VALID
+                activated_ticket_id = ticket.id
         else:
             payment.status = PaymentStatus.FAILED
             # An old expired checkout must not cancel a ticket that a newer checkout may still pay.
@@ -100,3 +104,4 @@ def handle_webhook(
     except Exception:
         db.rollback()
         raise
+    return activated_ticket_id

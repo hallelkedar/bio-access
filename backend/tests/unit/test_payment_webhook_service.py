@@ -38,9 +38,11 @@ def _payment(db: Session, session_id: str) -> Payment:
     return payment
 
 
-def _send(db: Session, provider: FakePaymentProvider, event_type: str, session_id: str, event_id: str | None = None) -> None:
+def _send(
+    db: Session, provider: FakePaymentProvider, event_type: str, session_id: str, event_id: str | None = None
+) -> int | None:
     payload, headers = provider.build_webhook(event_type, session_id, event_id)
-    payment_service.handle_webhook(db, provider, payload, headers)
+    return payment_service.handle_webhook(db, provider, payload, headers)
 
 
 def test_success_marks_paid_and_ticket_valid(
@@ -138,3 +140,34 @@ def test_unhandled_event_type_is_ignored(
 
     db.refresh(ticket)
     assert ticket.status == TicketStatus.PENDING_PAYMENT
+
+
+def test_returns_ticket_id_only_when_it_became_valid(
+    db: Session, provider: FakePaymentProvider, pending: tuple[User, Ticket, str]
+) -> None:
+    _, ticket, session_id = pending
+    payload, headers = provider.build_webhook("payment.succeeded", session_id)
+
+    first = payment_service.handle_webhook(db, provider, payload, headers)
+    replay = payment_service.handle_webhook(db, provider, payload, headers)
+
+    assert first == ticket.id
+    assert replay is None
+
+
+def test_failure_returns_none(
+    db: Session, provider: FakePaymentProvider, pending: tuple[User, Ticket, str]
+) -> None:
+    _, _, session_id = pending
+
+    assert _send(db, provider, "payment.failed", session_id) is None
+
+
+def test_second_paid_checkout_does_not_reactivate(
+    db: Session, provider: FakePaymentProvider, pending: tuple[User, Ticket, str]
+) -> None:
+    user, ticket, first_session = pending
+    second_session = payment_service.start_checkout(db, provider, user, ticket.id).session_id
+    _send(db, provider, "payment.succeeded", first_session)
+
+    assert _send(db, provider, "payment.succeeded", second_session) is None

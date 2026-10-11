@@ -5,6 +5,7 @@ from fastapi.testclient import TestClient
 from app.models.event import Event, EventStatus
 from app.models.user import User
 from app.providers.payment.fake import FakePaymentProvider
+from tests.fakes import RecordingNotifier
 
 MakeUser = Callable[..., User]
 MakeEvent = Callable[..., Event]
@@ -26,7 +27,11 @@ def _status(client: TestClient, headers: dict[str, str]) -> str:
 
 
 def test_paid_webhook_makes_ticket_valid_and_replay_is_harmless(
-    client: TestClient, make_user: MakeUser, make_event: MakeEvent, auth_headers: Headers
+    client: TestClient,
+    make_user: MakeUser,
+    make_event: MakeEvent,
+    auth_headers: Headers,
+    notifier: RecordingNotifier,
 ) -> None:
     headers, session_id = _checkout(client, make_user, make_event, auth_headers)
     payload, signature = FakePaymentProvider().build_webhook("payment.succeeded", session_id)
@@ -38,6 +43,22 @@ def test_paid_webhook_makes_ticket_valid_and_replay_is_harmless(
     assert first.json() == {"received": True}
     assert replay.status_code == 200
     assert _status(client, headers) == "VALID"
+    assert len(notifier.emails) == 1  # sent once, not again on replay
+    assert notifier.emails[0]["attachments"]
+
+
+def test_failed_payment_sends_nothing(
+    client: TestClient,
+    make_user: MakeUser,
+    make_event: MakeEvent,
+    auth_headers: Headers,
+    notifier: RecordingNotifier,
+) -> None:
+    _, session_id = _checkout(client, make_user, make_event, auth_headers)
+    payload, signature = FakePaymentProvider().build_webhook("payment.failed", session_id)
+
+    assert client.post(URL, content=payload, headers=signature).status_code == 200
+    assert notifier.emails == []
 
 
 def test_forged_webhook_returns_400(

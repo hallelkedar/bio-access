@@ -2,10 +2,13 @@ import logging
 from collections.abc import Callable
 from dataclasses import dataclass
 
+from sqlalchemy.orm import Session
+
 from app.models.event import Event
-from app.models.ticket import Ticket
+from app.models.ticket import Ticket, TicketStatus
 from app.models.user import User
 from app.providers.notify.base import Attachment, Notifier
+from app.repositories import ticket_repository, user_repository
 from app.utils.qr import make_qr_png
 
 logger = logging.getLogger(__name__)
@@ -55,6 +58,29 @@ def send_ticket_confirmation(
             ),
         )
     return NotificationResult(email_sent=email_sent, sms_sent=sms_sent)
+
+
+def notify_ticket_paid(
+    session_factory: Callable[[], Session], notifier: Notifier, ticket_id: int
+) -> None:
+    """Background task after payment: send the confirmation (email with QR, SMS).
+
+    Runs after the response is sent, so it opens its own session. Never raises:
+    any failure is logged and the payment stays recorded.
+    """
+    try:
+        with session_factory() as db:
+            ticket = ticket_repository.get_by_id(db, ticket_id)
+            if ticket is None or ticket.status != TicketStatus.VALID:
+                logger.warning("ticket %s is not VALID anymore, skipping confirmation", ticket_id)
+                return
+            user = user_repository.get_by_id(db, ticket.user_id)
+            if user is None:  # impossible while the FK exists
+                logger.warning("ticket %s has no user, skipping confirmation", ticket_id)
+                return
+            send_ticket_confirmation(notifier, user, ticket.event, ticket)
+    except Exception:
+        logger.exception("paid-ticket notification failed for ticket %s", ticket_id)
 
 
 def _try(channel: str, user_id: int, send: Callable[[], None]) -> bool:

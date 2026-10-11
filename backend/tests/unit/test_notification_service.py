@@ -1,31 +1,18 @@
+from collections.abc import Callable
 from datetime import UTC, datetime
 
 import pytest
+from sqlalchemy.orm import Session
 
-from collections.abc import Sequence
-
-from app.models.event import Event
-from app.models.ticket import Ticket
+from app.models.event import Event, EventStatus
+from app.models.ticket import Ticket, TicketStatus
 from app.models.user import User
-from app.providers.notify.base import Attachment, Notifier
 from app.services import notification as notification_service
+from app.services import ticket as ticket_service
+from tests.fakes import RecordingNotifier
 
-
-class RecordingNotifier(Notifier):
-    def __init__(self, fail_email: bool = False) -> None:
-        self.fail_email = fail_email
-        self.emails: list[dict[str, object]] = []
-        self.sms: list[dict[str, str]] = []
-
-    def send_email(
-        self, *, to: str, subject: str, body: str, attachments: Sequence[Attachment] = ()
-    ) -> None:
-        if self.fail_email:
-            raise ConnectionError("provider down")
-        self.emails.append({"to": to, "subject": subject, "body": body, "attachments": list(attachments)})
-
-    def send_sms(self, *, to: str, body: str) -> None:
-        self.sms.append({"to": to, "body": body})
+MakeUser = Callable[..., User]
+MakeEvent = Callable[..., Event]
 
 
 def _user(phone: str | None) -> User:
@@ -81,3 +68,59 @@ def test_email_failure_is_logged_not_raised_and_sms_still_sent(caplog: pytest.Lo
 
     assert result == notification_service.NotificationResult(email_sent=False, sms_sent=True)
     assert "ticket confirmation email failed for user 1" in caplog.text
+
+
+def _paid_ticket(db: Session, user: User, event: Event, status: TicketStatus = TicketStatus.VALID) -> Ticket:
+    ticket = ticket_service.create_ticket(db, user, event.id)
+    ticket.status = status
+    db.commit()
+    return ticket
+
+
+def _factory(db: Session) -> Callable[[], Session]:
+    """New sessions on the test transaction, like SessionLocal would give in production."""
+    return lambda: Session(bind=db.bind, join_transaction_mode="create_savepoint")
+
+
+def test_notify_ticket_paid_emails_owner_with_qr(
+    db: Session, make_user: MakeUser, make_event: MakeEvent
+) -> None:
+    user = make_user()
+    ticket = _paid_ticket(db, user, make_event(EventStatus.ACTIVE, name="Big Show"))
+    notifier = RecordingNotifier()
+
+    notification_service.notify_ticket_paid(_factory(db), notifier, ticket.id)
+
+    assert len(notifier.emails) == 1
+    assert notifier.emails[0]["to"] == user.email
+    assert "Big Show" in str(notifier.emails[0]["subject"])
+    assert notifier.emails[0]["attachments"]
+
+
+def test_notify_skips_ticket_that_is_not_valid(
+    db: Session, make_user: MakeUser, make_event: MakeEvent
+) -> None:
+    ticket = _paid_ticket(db, make_user(), make_event(EventStatus.ACTIVE), TicketStatus.CANCELLED)
+    notifier = RecordingNotifier()
+
+    notification_service.notify_ticket_paid(_factory(db), notifier, ticket.id)
+
+    assert notifier.emails == []
+
+
+def test_notify_survives_missing_ticket(db: Session, caplog: pytest.LogCaptureFixture) -> None:
+    notifier = RecordingNotifier()
+
+    notification_service.notify_ticket_paid(_factory(db), notifier, 999_999)  # no exception
+
+    assert notifier.emails == []
+    assert "ticket 999999" in caplog.text
+
+
+def test_notify_survives_database_error(caplog: pytest.LogCaptureFixture) -> None:
+    def broken_factory() -> Session:
+        raise ConnectionError("db down")
+
+    notification_service.notify_ticket_paid(broken_factory, RecordingNotifier(), 1)  # no exception
+
+    assert "paid-ticket notification failed for ticket 1" in caplog.text

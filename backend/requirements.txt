@@ -11,3 +11,5 @@ stripe==16.0.0
 qrcode[pil]==8.2
 pillow==12.3.0
 httpx==0.28.1
+boto3==1.43.111
+python-multipart==0.0.32

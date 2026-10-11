@@ -17,9 +17,10 @@ from app.models.event import Event, EventStatus
 from app.models.user import User, UserRole
 from app.providers.notify import get_notifier
 from app.providers.payment import get_payment_provider
+from app.providers.storage import get_storage
 from app.providers.payment.fake import FakePaymentProvider
 from app.repositories import user_repository
-from tests.fakes import RecordingNotifier
+from tests.fakes import InMemoryStorage, RecordingNotifier
 
 TEST_DB_NAME = "bioaccess_test"
 
@@ -69,7 +70,12 @@ def notifier() -> RecordingNotifier:
 
 
 @pytest.fixture
-def client(db: Session, notifier: RecordingNotifier) -> Iterator[TestClient]:
+def storage() -> InMemoryStorage:
+    return InMemoryStorage()
+
+
+@pytest.fixture
+def client(db: Session, notifier: RecordingNotifier, storage: InMemoryStorage) -> Iterator[TestClient]:
     app.dependency_overrides[get_db] = lambda: db
     # Background tasks get their own sessions, still inside the test transaction.
     app.dependency_overrides[get_session_factory] = lambda: (
@@ -78,6 +84,7 @@ def client(db: Session, notifier: RecordingNotifier) -> Iterator[TestClient]:
     # Never call a real payment provider or send real email/SMS from tests, whatever .env says.
     app.dependency_overrides[get_payment_provider] = FakePaymentProvider
     app.dependency_overrides[get_notifier] = lambda: notifier
+    app.dependency_overrides[get_storage] = lambda: storage
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

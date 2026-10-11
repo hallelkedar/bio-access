@@ -1,6 +1,7 @@
 from collections.abc import Sequence
 
 from app.providers.notify.base import Attachment, Notifier
+from app.providers.storage.base import StorageService
 
 
 class RecordingNotifier(Notifier):
@@ -20,3 +21,14 @@ class RecordingNotifier(Notifier):
 
     def send_sms(self, *, to: str, body: str) -> None:
         self.sms.append({"to": to, "body": body})
+
+
+class InMemoryStorage(StorageService):
+    """Keeps uploaded files in a dict instead of disk or S3."""
+
+    def __init__(self) -> None:
+        self.files: dict[str, tuple[bytes, str]] = {}
+
+    def upload(self, key: str, data: bytes, content_type: str) -> str:
+        self.files[key] = (data, content_type)
+        return f"https://storage.test/{key}"

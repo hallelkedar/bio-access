@@ -19,6 +19,9 @@ dist/
 .env.*
 !.env.example
 
+# Local uploads (STORAGE_PROVIDER=local)
+backend/media/
+
 # Local HTTPS certs (mkcert)
 *.pem
 *.key

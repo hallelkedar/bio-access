@@ -140,7 +140,7 @@ not real recognition. With `FACE_PROVIDER=rekognition` the same steps use AWS Re
 ## Testing
 
 ```bash
-cd backend && .venv/bin/pytest                   # 541 tests (+1 expected failure, see limitations)
+cd backend && .venv/bin/pytest                   # 549 tests (+1 expected failure, see limitations)
 cd backend && .venv/bin/pytest -m e2e            # the full journeys only
 cd frontend && npm test && npm run build         # 142 tests, typecheck, production build
 ```
@@ -157,6 +157,10 @@ whatever `.env` says.
 | Security | one test per spec §12 case, including route sweeps (every route needs a token; every admin route rejects non-admins) |
 | End to end | register → buy → pay → enroll → gate → admin live feed; face outage → QR fallback |
 | Frontend | pages, auth flows, camera hook (fake camera), gate scan loop, WebSocket hook, charts |
+
+**Latency:** `/api/gate/verify` reports a `Server-Timing` header (face search, locked entry, total).
+`scripts/measure_latency.py` measures a running server; results and interpretation are in
+[docs/latency.md](docs/latency.md) (target < 800 ms).
 
 ## Security & privacy
 

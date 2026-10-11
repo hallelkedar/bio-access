@@ -4,6 +4,7 @@ from datetime import UTC, datetime, timedelta
 from sqlalchemy.orm import Session
 
 from app.core.config import get_settings
+from app.core.timing import Timings
 from app.models.access_log import AccessLog, AccessMethod, AccessReason, AccessResult
 from app.models.event import Event, EventStatus
 from app.models.ticket import TicketStatus
@@ -48,6 +49,7 @@ def verify_face(
     image: bytes,
     max_bytes: int,
     now: datetime | None = None,
+    timings: Timings | None = None,
 ) -> GateVerifyResult:
     """Identify the person in the frame and, if their ticket is VALID, let them in.
 
@@ -57,6 +59,7 @@ def verify_face(
     Every attempt is logged. Raises EventNotFoundError for an unknown event id.
     """
     now = now or datetime.now(UTC)
+    timings = timings or Timings()
     event = event_service.get_event(db, event_id)  # raises EventNotFoundError
     if not event_open_for_entry(event, now):
         # Checked before the face search: no provider call (cost, latency) for a closed event.
@@ -64,7 +67,8 @@ def verify_face(
 
     try:
         validate_image(image, max_bytes, FACE_IMAGE_FORMATS)
-        match = face_search.identify(db, face_provider, event_id, image)
+        with timings.measure("face"):
+            match = face_search.identify(db, face_provider, event_id, image)
     except (InvalidImageError, NoFaceInImageError):
         return _log_denial(db, event_id, gate_id, AccessMethod.FACE, _denied(AccessReason.LOW_QUALITY), now)
     except CollectionNotFoundError:
@@ -74,11 +78,17 @@ def verify_face(
     if match is None:
         return _log_denial(db, event_id, gate_id, AccessMethod.FACE, _denied(AccessReason.NOT_RECOGNIZED), now)
 
-    return attempt_entry(db, event_id, match.ticket_id, gate_id, AccessMethod.FACE, match.similarity, now)
+    with timings.measure("db"):
+        return attempt_entry(db, event_id, match.ticket_id, gate_id, AccessMethod.FACE, match.similarity, now)
 
 
 def verify_qr(
-    db: Session, event_id: int, gate_id: str, qr_token: str, now: datetime | None = None
+    db: Session,
+    event_id: int,
+    gate_id: str,
+    qr_token: str,
+    now: datetime | None = None,
+    timings: Timings | None = None,
 ) -> GateVerifyResult:
     """QR fallback: find the ticket by its token, then the same atomic entry as face.
 
@@ -90,10 +100,11 @@ def verify_qr(
     if not event_open_for_entry(event, now):
         return _log_denial(db, event_id, gate_id, AccessMethod.QR, _denied(AccessReason.EVENT_NOT_ACTIVE), now)
 
-    ticket = ticket_repository.get_by_qr_token(db, qr_token)
-    if ticket is None:
-        return _log_denial(db, event_id, gate_id, AccessMethod.QR, _denied(AccessReason.NOT_RECOGNIZED), now)
-    return attempt_entry(db, event_id, ticket.id, gate_id, AccessMethod.QR, now=now)
+    with (timings or Timings()).measure("db"):
+        ticket = ticket_repository.get_by_qr_token(db, qr_token)
+        if ticket is None:
+            return _log_denial(db, event_id, gate_id, AccessMethod.QR, _denied(AccessReason.NOT_RECOGNIZED), now)
+        return attempt_entry(db, event_id, ticket.id, gate_id, AccessMethod.QR, now=now)
 
 
 def attempt_entry(

@@ -210,3 +210,33 @@ def test_qr_only_gatekeepers(
     )
 
     assert response.status_code == 403
+
+
+def _server_timing(response: Any) -> dict[str, float]:
+    parts = [part.strip().split(";dur=") for part in response.headers["server-timing"].split(",")]
+    return {name: float(value) for name, value in parts}
+
+
+def test_face_verify_reports_server_timing(
+    client: TestClient, setup: tuple[Event, Ticket, User], make_user: MakeUser, auth_headers: Headers
+) -> None:
+    event, _, _ = setup
+
+    timing = _server_timing(_verify(client, event.id, auth_headers(make_user(UserRole.GATEKEEPER))))
+
+    assert set(timing) == {"face", "db", "total"}
+    assert all(value >= 0 for value in timing.values())
+    assert timing["total"] >= timing["face"]
+
+
+def test_qr_verify_reports_db_time_without_face(
+    client: TestClient, setup: tuple[Event, Ticket, User], make_user: MakeUser, auth_headers: Headers
+) -> None:
+    event, ticket, _ = setup
+    response = client.post(
+        QR_URL,
+        json={"event_id": event.id, "gate_id": "north-1", "qr_token": ticket.qr_token},
+        headers=auth_headers(make_user(UserRole.GATEKEEPER)),
+    )
+
+    assert set(_server_timing(response)) == {"db", "total"}

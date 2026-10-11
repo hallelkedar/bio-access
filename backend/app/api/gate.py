@@ -1,13 +1,14 @@
 from datetime import UTC, datetime
 
-from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, Request, Response, status
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
 from app.api.uploads import IMAGE_BODY_OPENAPI, read_body_in_memory, too_large
 from app.core.config import get_settings
-from app.core.rate_limit import gate_limit, user_key, limiter
 from app.core.deps import require_role
+from app.core.rate_limit import gate_limit, user_key, limiter
+from app.core.timing import Timings
 from app.db.session import get_db
 from app.models.access_log import AccessMethod
 from app.models.user import User, UserRole
@@ -27,6 +28,7 @@ require_gatekeeper = require_role(UserRole.GATEKEEPER)
 @limiter.shared_limit(gate_limit, scope="gate", key_func=user_key)
 async def verify(
     request: Request,
+    response: Response,
     background_tasks: BackgroundTasks,
     event_id: int = Query(),
     gate_id: str = Query(min_length=1, max_length=64, description="Which gate, e.g. north-1"),
@@ -40,10 +42,12 @@ async def verify(
     """
     max_bytes = get_settings().max_upload_mb * 1024 * 1024
     image = await read_body_in_memory(request, max_bytes)
+    timings = Timings()
     try:
-        decision = await run_in_threadpool(
-            access_control.verify_face, db, face_provider, event_id, gate_id, image, max_bytes
-        )
+        with timings.measure("total"):
+            decision = await run_in_threadpool(
+                access_control.verify_face, db, face_provider, event_id, gate_id, image, max_bytes, None, timings
+            )
     except EventNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="event not found")
     except ImageTooLargeError:
@@ -51,6 +55,7 @@ async def verify(
     finally:
         del image
     _publish(background_tasks, event_id, gate_id, AccessMethod.FACE, decision)
+    response.headers["Server-Timing"] = timings.header()
     return decision
 
 
@@ -58,17 +63,21 @@ async def verify(
 @limiter.shared_limit(gate_limit, scope="gate", key_func=user_key)
 def verify_qr(
     request: Request,
+    response: Response,
     data: GateQrVerify,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
     _: User = Depends(require_gatekeeper),
 ) -> GateVerifyResult:
     """Fallback when face recognition fails. Compare user_name with the guest's ID."""
+    timings = Timings()
     try:
-        decision = access_control.verify_qr(db, data.event_id, data.gate_id, data.qr_token)
+        with timings.measure("total"):
+            decision = access_control.verify_qr(db, data.event_id, data.gate_id, data.qr_token, None, timings)
     except EventNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="event not found")
     _publish(background_tasks, data.event_id, data.gate_id, AccessMethod.QR, decision)
+    response.headers["Server-Timing"] = timings.header()
     return decision
 
 

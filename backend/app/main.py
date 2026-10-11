@@ -4,7 +4,7 @@ from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
-from app.api import enrollment, events, gate, payments, routes_auth, tickets, ws
+from app.api import admin, enrollment, events, gate, payments, routes_auth, tickets, ws
 from app.core.config import get_settings
 from app.db.session import get_db
 
@@ -16,6 +16,7 @@ app.include_router(payments.router)
 app.include_router(enrollment.router)
 app.include_router(gate.router)
 app.include_router(ws.router)
+app.include_router(admin.router)
 
 settings = get_settings()
 if settings.storage_provider == "local":

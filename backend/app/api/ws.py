@@ -6,6 +6,7 @@ from pydantic import ValidationError
 from sqlalchemy.orm import Session
 from starlette.concurrency import run_in_threadpool
 
+from app.core.config import get_settings
 from app.db.session import get_session_factory
 from app.models.user import User, UserRole
 from app.schemas.ws import WsAuth, WsMessage
@@ -36,8 +37,13 @@ async def admin_feed(
     Protocol: connect, then send {"type": "auth", "token": "<JWT>"} within 5 s.
     Closes with 4401 (bad/missing token) or 4403 (not an admin).
     Afterwards the server pushes WsMessage JSON; {"type": "ping"} gets a pong.
+    Browsers on a foreign origin are refused (4403): CORS doesn't cover WebSockets.
     """
     await websocket.accept()
+    origin = websocket.headers.get("origin")
+    if origin is not None and origin not in get_settings().cors_origins_list:
+        await websocket.close(code=CLOSE_FORBIDDEN)
+        return
     try:
         raw = await asyncio.wait_for(websocket.receive_json(), timeout=AUTH_TIMEOUT_SECONDS)
         auth = WsAuth.model_validate(raw)

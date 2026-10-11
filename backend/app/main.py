@@ -1,4 +1,5 @@
 from fastapi import Depends, FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from slowapi.errors import RateLimitExceeded
 from sqlalchemy import text
@@ -8,11 +9,23 @@ from sqlalchemy.orm import Session
 from app.api import admin, enrollment, events, gate, payments, routes_auth, tickets, ws
 from app.core.config import get_settings
 from app.core.rate_limit import limiter, rate_limit_exceeded_handler
+from app.core.security_headers import SecurityHeadersMiddleware
 from app.db.session import get_db
 
 app = FastAPI(title="BioAccess")
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+app.add_middleware(SecurityHeadersMiddleware)
+# CORS is enforced by browsers: foreign origins simply get no permission headers.
+# No credentials: the JWT travels in the Authorization header, not in cookies.
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=get_settings().cors_origins_list,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE"],
+    allow_headers=["Authorization", "Content-Type"],
+    expose_headers=["Retry-After"],
+)
 app.include_router(routes_auth.router)
 app.include_router(events.router)
 app.include_router(tickets.router)

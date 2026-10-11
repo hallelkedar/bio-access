@@ -35,7 +35,9 @@ class Settings(BaseSettings):
     stripe_webhook_secret: str | None = None
 
     # Notifications
-    notifier: Literal["console", "resend+twilio"] = "console"
+    email_provider: Literal["console", "resend"] = "console"
+    sms_provider: Literal["console", "twilio"] = "console"
+    email_from: str = "BioAccess <onboarding@resend.dev>"  # Resend's test sender
     resend_api_key: str | None = None
     twilio_account_sid: str | None = None
     twilio_auth_token: str | None = None

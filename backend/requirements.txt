@@ -10,3 +10,4 @@ pyjwt==2.15.1
 stripe==16.0.0
 qrcode[pil]==8.2
 pillow==12.3.0
+httpx==0.28.1

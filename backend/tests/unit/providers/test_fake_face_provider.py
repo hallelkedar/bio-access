@@ -7,6 +7,7 @@ from app.providers import face as face_providers
 from app.providers.face.base import (
     CollectionNotFoundError,
     FaceProviderError,
+    NoFaceInImageError,
     QualityIssue,
     QualityResult,
     collection_id_for,
@@ -137,3 +138,10 @@ def test_factory_selects_fake(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(face_providers, "get_settings", lambda: settings)
 
     assert isinstance(face_providers.get_face_provider(), FakeFaceProvider)
+
+
+def test_search_without_face_raises(provider: FakeFaceProvider) -> None:
+    provider.set_quality(STRANGER, QualityResult((QualityIssue.NO_FACE,)))
+
+    with pytest.raises(NoFaceInImageError):
+        provider.search(1, STRANGER, threshold=95)

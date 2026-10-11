@@ -12,6 +12,7 @@ from app.providers.face.base import (
     CollectionNotFoundError,
     FaceNotIndexedError,
     FaceProviderError,
+    NoFaceInImageError,
     QualityIssue,
     QualityResult,
 )
@@ -267,3 +268,70 @@ def test_enroll_errors(
 
     with pytest.raises(error):
         provider.enroll(7, 42, IMAGE)
+
+
+# --- search (SearchFacesByImage) ----------------------------------------------
+
+SEARCH_PARAMS = {
+    "CollectionId": "bioaccess-event-7",
+    "Image": {"Bytes": IMAGE},
+    "FaceMatchThreshold": 95.0,
+    "MaxFaces": 1,
+}
+
+
+def _match(external_id: str, similarity: float, face_id: str = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee") -> dict[str, object]:
+    return {"Similarity": similarity, "Face": {"FaceId": face_id, "ExternalImageId": external_id}}
+
+
+def test_search_returns_match(stubbed: tuple[RekognitionFaceProvider, Stubber]) -> None:
+    provider, stubber = stubbed
+    stubber.add_response("search_faces_by_image", {"FaceMatches": [_match("42", 99.1)]}, SEARCH_PARAMS)
+
+    match = provider.search(7, IMAGE, 95.0)
+
+    assert match is not None
+    assert (match.ticket_id, match.similarity) == (42, 99.1)
+    assert match.face_id == "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"
+
+
+def test_search_no_match(stubbed: tuple[RekognitionFaceProvider, Stubber]) -> None:
+    provider, stubber = stubbed
+    stubber.add_response("search_faces_by_image", {"FaceMatches": []}, SEARCH_PARAMS)
+
+    assert provider.search(7, IMAGE, 95.0) is None
+
+
+def test_search_skips_foreign_faces(stubbed: tuple[RekognitionFaceProvider, Stubber]) -> None:
+    provider, stubber = stubbed
+    stubber.add_response(
+        "search_faces_by_image", {"FaceMatches": [_match("added-by-hand", 99.9), _match("42", 97.0)]}, SEARCH_PARAMS
+    )
+
+    match = provider.search(7, IMAGE, 95.0)
+
+    assert match is not None and match.ticket_id == 42
+
+
+def test_search_no_face_in_image(stubbed: tuple[RekognitionFaceProvider, Stubber]) -> None:
+    provider, stubber = stubbed
+    stubber.add_client_error("search_faces_by_image", service_error_code="InvalidParameterException")
+
+    with pytest.raises(NoFaceInImageError):
+        provider.search(7, IMAGE, 95.0)
+
+
+@pytest.mark.parametrize(
+    ("code", "error"),
+    [
+        ("ResourceNotFoundException", CollectionNotFoundError),
+        ("ImageTooLargeException", InvalidImageError),
+        ("ThrottlingException", FaceProviderError),
+    ],
+)
+def test_search_errors(stubbed: tuple[RekognitionFaceProvider, Stubber], code: str, error: type[Exception]) -> None:
+    provider, stubber = stubbed
+    stubber.add_client_error("search_faces_by_image", service_error_code=code)
+
+    with pytest.raises(error):
+        provider.search(7, IMAGE, 95.0)

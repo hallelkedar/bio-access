@@ -9,6 +9,7 @@ from app.providers.face.base import (
     FaceNotIndexedError,
     FaceProvider,
     FaceProviderError,
+    NoFaceInImageError,
     QualityIssue,
     QualityResult,
     collection_id_for,
@@ -149,10 +150,38 @@ class RekognitionFaceProvider(FaceProvider):
             raise FaceNotIndexedError(issues or (QualityIssue.NO_FACE,))
         return str(records[0]["Face"]["FaceId"])
 
-    # Implemented in later BUILD_PLAN steps.
+    def search(self, event_id: int, image: bytes, threshold: float) -> FaceMatch | None:
+        """SearchFacesByImage: best face in the event's collection at or above threshold."""
+        try:
+            response = self._client.search_faces_by_image(
+                CollectionId=collection_id_for(event_id),
+                Image={"Bytes": image},
+                FaceMatchThreshold=threshold,
+                MaxFaces=1,
+            )
+        except ClientError as exc:
+            code = _error_code(exc)
+            if code == "InvalidParameterException":  # Rekognition's answer for "no face in the image"
+                raise NoFaceInImageError() from None
+            if code in _BAD_IMAGE_ERRORS:
+                raise InvalidImageError("image must be a JPEG or PNG up to 5 MB") from None
+            if code == "ResourceNotFoundException":
+                raise CollectionNotFoundError(collection_id_for(event_id)) from None
+            raise FaceProviderError(f"search_faces_by_image failed: {code}") from None
+        except BotoCoreError as exc:
+            raise FaceProviderError(f"search_faces_by_image failed: {type(exc).__name__}") from None
 
-    def search(self, event_id: int, image: bytes, threshold: float) -> FaceMatch | None:  # 6.6
-        raise NotImplementedError
+        for match in response.get("FaceMatches", []):  # sorted by similarity, best first
+            face = match["Face"]
+            external_id = str(face.get("ExternalImageId", ""))
+            if not external_id.isdigit():
+                continue  # not one of our faces (e.g. added by hand in the console)
+            return FaceMatch(
+                ticket_id=int(external_id), face_id=str(face["FaceId"]), similarity=float(match["Similarity"])
+            )
+        return None
+
+    # Implemented in later BUILD_PLAN steps.
 
     def delete_face(self, event_id: int, face_id: str) -> None:  # 6.8
         raise NotImplementedError

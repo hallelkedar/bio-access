@@ -6,6 +6,8 @@ from app.providers.face.base import (
     FaceMatch,
     FaceProvider,
     FaceProviderError,
+    NoFaceInImageError,
+    QualityIssue,
     QualityResult,
     collection_id_for,
 )
@@ -59,6 +61,8 @@ class FakeFaceProvider(FaceProvider):
     def search(self, event_id: int, image: bytes, threshold: float) -> FaceMatch | None:
         faces = self._faces(event_id)
         fingerprint = _fingerprint(image)
+        if QualityIssue.NO_FACE in self._quality.get(fingerprint, QualityResult()).issues:
+            raise NoFaceInImageError()
         similarity = self._similarity.get(fingerprint, EXACT_MATCH_SIMILARITY)
         for face_id, (ticket_id, enrolled) in faces.items():
             if enrolled == fingerprint and similarity >= threshold:

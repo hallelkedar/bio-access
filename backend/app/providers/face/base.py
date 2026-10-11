@@ -42,6 +42,10 @@ class CollectionNotFoundError(FaceProviderError):
     pass
 
 
+class NoFaceInImageError(Exception):
+    """The searched image has no detectable face (a bad frame, not an outage)."""
+
+
 class FaceNotIndexedError(Exception):
     """The provider found the photo unusable at indexing time (a quality problem, not an outage)."""
 

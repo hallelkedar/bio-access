@@ -19,7 +19,8 @@ class Settings(BaseSettings):
     jwt_expire_minutes: int = 60
     cors_origins: str = "https://localhost:5173"
     frontend_url: str = "https://localhost:5173"  # where the payment page sends the user back
-    rate_limit_per_minute: int = 60
+    auth_rate_limit: str = "10/minute"  # login/register, per client IP
+    gate_rate_limit: str = "120/minute"  # gate verify (face + QR), per gatekeeper
     max_upload_mb: int = 2
 
     # Face recognition

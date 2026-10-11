@@ -9,6 +9,7 @@ from sqlalchemy.orm import Session
 
 import app.models  # noqa: F401  (registers all models on Base.metadata)
 from app.core.config import get_settings
+from app.core.rate_limit import limiter
 from app.core.security import create_access_token
 from app.db.base import Base
 from app.db.session import get_db, get_session_factory
@@ -37,6 +38,14 @@ def _create_test_database(url: str) -> None:
         if not exists:
             conn.execute(text(f'CREATE DATABASE "{TEST_DB_NAME}"'))
     admin_engine.dispose()
+
+
+@pytest.fixture(autouse=True)
+def _reset_rate_limits() -> Iterator[None]:
+    """Each test starts with empty rate-limit counters (they're shared, in memory)."""
+    limiter.reset()
+    yield
+    limiter.reset()
 
 
 @pytest.fixture(scope="session")

@@ -6,6 +6,7 @@ from starlette.concurrency import run_in_threadpool
 
 from app.api.uploads import IMAGE_BODY_OPENAPI, read_body_in_memory, too_large
 from app.core.config import get_settings
+from app.core.rate_limit import gate_limit, gatekeeper_key, limiter
 from app.core.deps import require_role
 from app.db.session import get_db
 from app.models.access_log import AccessMethod
@@ -23,6 +24,7 @@ require_gatekeeper = require_role(UserRole.GATEKEEPER)
 
 
 @router.post("/verify", response_model=GateVerifyResult, openapi_extra=IMAGE_BODY_OPENAPI)
+@limiter.shared_limit(gate_limit, scope="gate", key_func=gatekeeper_key)
 async def verify(
     request: Request,
     background_tasks: BackgroundTasks,
@@ -53,7 +55,9 @@ async def verify(
 
 
 @router.post("/verify-qr", response_model=GateVerifyResult)
+@limiter.shared_limit(gate_limit, scope="gate", key_func=gatekeeper_key)
 def verify_qr(
+    request: Request,
     data: GateQrVerify,
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),

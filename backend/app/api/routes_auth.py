@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import get_current_user
+from app.core.rate_limit import auth_limit, limiter
 from app.db.session import get_db
 from app.models.user import User
 from app.schemas.auth import LoginRequest, TokenResponse
@@ -12,7 +13,8 @@ router = APIRouter(prefix="/api/auth", tags=["auth"])
 
 
 @router.post("/register", response_model=UserRead, status_code=status.HTTP_201_CREATED)
-def register(data: UserCreate, db: Session = Depends(get_db)) -> UserRead:
+@limiter.limit(auth_limit)
+def register(request: Request, data: UserCreate, db: Session = Depends(get_db)) -> UserRead:
     try:
         user = auth_service.register(db, data)
     except auth_service.EmailAlreadyRegisteredError:
@@ -21,7 +23,8 @@ def register(data: UserCreate, db: Session = Depends(get_db)) -> UserRead:
 
 
 @router.post("/login", response_model=TokenResponse)
-def login(data: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
+@limiter.limit(auth_limit)
+def login(request: Request, data: LoginRequest, db: Session = Depends(get_db)) -> TokenResponse:
     try:
         token = auth_service.login(db, data)
     except auth_service.InvalidCredentialsError:

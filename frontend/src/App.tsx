@@ -8,6 +8,9 @@ import { HOME_BY_ROLE } from "./auth/roles";
 import { AdminLayout } from "./pages/admin/AdminLayout";
 import { DashboardPage } from "./pages/admin/DashboardPage";
 import { EventsAdminPage } from "./pages/admin/EventsAdminPage";
+import { LogsPage } from "./pages/admin/LogsPage";
+import { SettingsPage } from "./pages/admin/SettingsPage";
+import { UsersPage } from "./pages/admin/UsersPage";
 import { GatePage } from "./pages/gate/GatePage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
@@ -87,11 +90,6 @@ function Home() {
   );
 }
 
-// Placeholders until their screens are built (BUILD_PLAN 11.3-11.8).
-function Placeholder({ title }: { title: string }) {
-  return <h1 className="text-2xl font-bold">{title}</h1>;
-}
-
 function NotFound() {
   return (
     <section>
@@ -133,9 +131,9 @@ export const routes: RouteObject[] = [
             children: [
               { index: true, element: <DashboardPage /> },
               { path: "events", element: <EventsAdminPage /> },
-              { path: "logs", element: <Placeholder title="Access logs" /> },
-              { path: "users", element: <Placeholder title="Users" /> },
-              { path: "settings", element: <Placeholder title="Settings" /> },
+              { path: "logs", element: <LogsPage /> },
+              { path: "users", element: <UsersPage /> },
+              { path: "settings", element: <SettingsPage /> },
             ],
           },
         ],

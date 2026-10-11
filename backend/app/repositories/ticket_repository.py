@@ -24,6 +24,9 @@ def get_by_event_and_user(db: Session, event_id: int, user_id: int) -> Ticket | 
     return db.scalars(query).first()
 
 
+def get_by_id(db: Session, ticket_id: int) -> Ticket | None:
+    return db.get(Ticket, ticket_id)
+
 
 def list_by_user(db: Session, user_id: int) -> list[Ticket]:
     """User's tickets with their event loaded in the same query, by event start."""

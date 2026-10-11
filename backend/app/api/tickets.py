@@ -4,7 +4,10 @@ from sqlalchemy.orm import Session
 from app.core.deps import require_role
 from app.db.session import get_db
 from app.models.user import User, UserRole
-from app.schemas.ticket import MyTicketRead, TicketCreate, TicketRead
+from app.providers.payment import get_payment_provider
+from app.providers.payment.base import PaymentProvider
+from app.schemas.ticket import CheckoutRead, MyTicketRead, TicketCreate, TicketRead
+from app.services import payment as payment_service
 from app.services import ticket as ticket_service
 from app.services.event import EventNotFoundError
 
@@ -35,3 +38,19 @@ def create_ticket(
 @router.get("/me", response_model=list[MyTicketRead])
 def my_tickets(db: Session = Depends(get_db), user: User = Depends(require_user)) -> list[MyTicketRead]:
     return ticket_service.list_my_tickets(db, user)
+
+
+@router.post("/{ticket_id}/checkout", response_model=CheckoutRead)
+def checkout(
+    ticket_id: int,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user),
+    provider: PaymentProvider = Depends(get_payment_provider),
+) -> CheckoutRead:
+    try:
+        session = payment_service.start_checkout(db, provider, user, ticket_id)
+    except payment_service.TicketNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ticket not found")
+    except payment_service.TicketNotPayableError:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="ticket is not awaiting payment")
+    return CheckoutRead(checkout_url=session.url)

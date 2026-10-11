@@ -34,3 +34,7 @@ class EventSummary(BaseModel):
 class MyTicketRead(TicketRead):
     event: EventSummary
     qr_token: str | None
+
+
+class CheckoutRead(BaseModel):
+    checkout_url: str

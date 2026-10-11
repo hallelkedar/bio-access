@@ -8,8 +8,9 @@ from app.core.config import get_settings
 from app.core.security import InvalidTokenError, decode_access_token
 
 # Counters live in this process's memory; several workers would need shared storage (e.g. Redis).
-# get_remote_address uses the direct connection's IP. X-Forwarded-For is deliberately not
-# trusted (any client can forge it); behind a reverse proxy, configure the proxy instead.
+# get_remote_address uses the connection's IP. In Docker, uvicorn runs with --proxy-headers
+# and only nginx can reach it, so that IP is the real client's. Without such a proxy,
+# X-Forwarded-For is never trusted (any client can forge it).
 limiter = Limiter(key_func=get_remote_address)
 
 

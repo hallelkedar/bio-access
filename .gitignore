@@ -25,6 +25,7 @@ backend/.demo_faces.json
 backend/.demo_faces.tmp
 
 # Local HTTPS certs (mkcert)
+certs/
 *.pem
 *.key
 

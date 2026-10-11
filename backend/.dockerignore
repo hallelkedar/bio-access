@@ -1,0 +1,16 @@
+# Never in the image: secrets, local state, dev/test material.
+.env
+.env.*
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+tests/
+media/
+.demo_faces.json
+.demo_faces.tmp
+requirements-dev.txt
+pytest.ini
+Dockerfile

@@ -1,3 +1,7 @@
+# Full stack: docker compose up --build   →   https://localhost
+# Certificates first: scripts/make-certs.sh (mkcert). Development without Docker still works
+# (uvicorn + npm run dev); then only the db service is needed: docker compose up -d db
+
 services:
   db:
     image: postgres:15
@@ -7,7 +11,7 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-bioaccess}
       POSTGRES_DB: ${POSTGRES_DB:-bioaccess}
     ports:
-      - "5432:5432"
+      - "5432:5432"  # for local development tools; the containers use the internal network
     volumes:
       - pgdata:/var/lib/postgresql/data
     healthcheck:
@@ -16,5 +20,37 @@ services:
       timeout: 3s
       retries: 10
 
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env  # secrets are passed at runtime, never baked into the image
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-bioaccess}:${POSTGRES_PASSWORD:-bioaccess}@db:5432/${POSTGRES_DB:-bioaccess}
+      FRONTEND_URL: ${PUBLIC_URL:-https://localhost}
+      CORS_ORIGINS: ${PUBLIC_URL:-https://localhost}
+      API_PUBLIC_URL: ${PUBLIC_URL:-https://localhost}
+      DEMO_FACES_FILE: /data/demo_faces.json
+    volumes:
+      - media:/app/media
+      - demo-data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+    # No "ports": only the web container can reach the backend.
+
+  web:
+    build: ./frontend
+    restart: unless-stopped
+    ports:
+      - "${HTTPS_PORT:-443}:443"
+      - "${HTTP_PORT:-80}:80"
+    volumes:
+      - ./certs:/etc/nginx/certs:ro
+    depends_on:
+      backend:
+        condition: service_healthy
+
 volumes:
   pgdata:
+  media:
+  demo-data:

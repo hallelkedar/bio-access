@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     aws_secret_access_key: str | None = None
     face_match_threshold: float = 95
 
+    # Gate
+    gate_opens_minutes_before: int = Field(default=60, ge=0)  # doors open before starts_at
+
     # Payments
     payment_provider: Literal["fake", "stripe"] = "fake"
     stripe_secret_key: str | None = None

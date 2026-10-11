@@ -12,6 +12,7 @@ from app.models.ticket import Ticket, TicketStatus
 from app.models.user import User, UserRole
 from app.providers.face.fake import FakeFaceProvider
 from app.services import ticket as ticket_service
+from tests.events import live_window
 from tests.images import image_bytes, noise_png
 
 MakeUser = Callable[..., User]
@@ -26,7 +27,7 @@ def setup(
     db: Session, make_user: MakeUser, make_event: MakeEvent, face_provider: FakeFaceProvider
 ) -> tuple[Event, Ticket, User]:
     user = make_user()
-    event = make_event(EventStatus.ACTIVE)
+    event = make_event(EventStatus.ACTIVE, **live_window())
     ticket = ticket_service.create_ticket(db, user, event.id)
     ticket.status = TicketStatus.VALID
     db.commit()

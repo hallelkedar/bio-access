@@ -13,6 +13,7 @@ from app.providers.face.fake import FakeFaceProvider
 from app.services import access_control
 from app.services import ticket as ticket_service
 from app.services.event import EventNotFoundError
+from tests.events import live_window
 from tests.images import image_bytes
 
 MakeUser = Callable[..., User]
@@ -38,7 +39,7 @@ def enrolled(
 ) -> tuple[Event, Ticket, User]:
     """An ACTIVE event with one VALID ticket whose holder enrolled FACE."""
     user = make_user()
-    event = make_event(EventStatus.ACTIVE)
+    event = make_event(EventStatus.ACTIVE, **live_window())
     ticket = ticket_service.create_ticket(db, user, event.id)
     ticket.status = TicketStatus.VALID
     db.commit()
@@ -134,7 +135,7 @@ def test_match_from_other_event_not_recognized(
     db: Session, faces: FakeFaceProvider, enrolled: tuple[Event, Ticket, User], make_event: MakeEvent
 ) -> None:
     _, ticket, _ = enrolled
-    other = make_event(EventStatus.ACTIVE)
+    other = make_event(EventStatus.ACTIVE, **live_window())
     faces.ensure_collection(other.id)
     faces.enroll(other.id, ticket.id, FACE)  # corrupted collection: face tagged with a foreign ticket
 
@@ -223,7 +224,7 @@ def test_attempt_entry_wrong_event(
     db: Session, enrolled: tuple[Event, Ticket, User], make_event: MakeEvent
 ) -> None:
     _, ticket, _ = enrolled
-    other = make_event(EventStatus.ACTIVE)
+    other = make_event(EventStatus.ACTIVE, **live_window())
 
     decision = access_control.attempt_entry(db, other.id, ticket.id, GATE, AccessMethod.QR)
 

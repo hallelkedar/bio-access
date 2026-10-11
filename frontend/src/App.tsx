@@ -5,7 +5,10 @@ import type { Role } from "./api/types";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { HOME_BY_ROLE } from "./auth/roles";
-import { LanguageProvider } from "./i18n/LanguageProvider";
+import { LanguageToggle } from "./components/LanguageToggle";
+import { LogoMark } from "./components/LogoMark";
+import type { TranslationKey } from "./i18n/en";
+import { LanguageProvider, useLanguage } from "./i18n/LanguageProvider";
 import { AdminLayout } from "./pages/admin/AdminLayout";
 import { DashboardPage } from "./pages/admin/DashboardPage";
 import { EventsAdminPage } from "./pages/admin/EventsAdminPage";
@@ -20,10 +23,10 @@ import { EnrollPage } from "./pages/user/EnrollPage";
 import { EventsPage } from "./pages/user/EventsPage";
 import { MyTicketsPage } from "./pages/user/MyTicketsPage";
 
-const NAV_BY_ROLE: Record<Role, { to: string; label: string }[]> = {
+const NAV_BY_ROLE: Record<Role, { to: string; labelKey: TranslationKey }[]> = {
   USER: [
-    { to: "/events", label: "Events" },
-    { to: "/tickets", label: "My tickets" },
+    { to: "/events", labelKey: "nav.events" },
+    { to: "/tickets", labelKey: "nav.myTickets" },
   ],
   GATEKEEPER: [],
   ADMIN: [],
@@ -31,36 +34,49 @@ const NAV_BY_ROLE: Record<Role, { to: string; label: string }[]> = {
 
 function Header() {
   const { user, logout } = useAuth();
+  const { t } = useLanguage();
   return (
-    <header className="border-b border-slate-200 bg-white">
-      <nav className="mx-auto flex max-w-5xl items-center gap-6 px-4 py-3">
-        <Link to={user ? HOME_BY_ROLE[user.role] : "/"} className="text-lg font-semibold">
-          BioAccess
+    <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/75 backdrop-blur-md supports-[backdrop-filter]:bg-white/60">
+      <nav aria-label={t("nav.main")} className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
+        <Link to={user ? HOME_BY_ROLE[user.role] : "/"} className="flex items-center gap-2 text-lg font-semibold tracking-tight text-slate-900">
+          <LogoMark />
+          {t("app.name")}
         </Link>
         {user &&
           NAV_BY_ROLE[user.role].map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
-              className={({ isActive }) => `text-sm ${isActive ? "font-semibold text-slate-900" : "text-slate-600"}`}
+              className={({ isActive }) =>
+                `rounded-md px-1 text-sm transition-colors ${isActive ? "font-semibold text-slate-900" : "text-slate-600 hover:text-slate-900"}`
+              }
             >
-              {item.label}
+              {t(item.labelKey)}
             </NavLink>
           ))}
-        <div className="ml-auto flex items-center gap-4 text-sm">
+        <div className="ms-auto flex items-center gap-3 text-sm">
+          <LanguageToggle />
           {user ? (
             <>
-              <span className="text-slate-600">
-                {user.full_name} <span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">{user.role}</span>
+              <span className="hidden items-center gap-2 text-slate-700 sm:flex">
+                <span>{user.full_name}</span>
+                <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-medium text-brand-700">
+                  {t(`role.${user.role}`)}
+                </span>
               </span>
-              <button type="button" onClick={logout} className="text-blue-700 underline">
-                Log out
+              <button type="button" onClick={logout}
+                className="rounded-md px-2 py-1 font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-brand-500">
+                {t("header.logOut")}
               </button>
             </>
           ) : (
             <>
-              <Link to="/login" className="text-blue-700 underline">Log in</Link>
-              <Link to="/register" className="text-blue-700 underline">Register</Link>
+              <Link to="/login" className="rounded-md px-2 py-1 font-medium text-slate-700 hover:bg-slate-100">
+                {t("header.logIn")}
+              </Link>
+              <Link to="/register" className="rounded-md bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-700">
+                {t("header.register")}
+              </Link>
             </>
           )}
         </div>

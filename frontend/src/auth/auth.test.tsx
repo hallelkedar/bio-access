@@ -184,3 +184,15 @@ describe("ProtectedRoute", () => {
     expect(await screen.findByRole("heading", { name: "Not allowed" })).toBeInTheDocument();
   });
 });
+
+describe("header user chip", () => {
+  it("shows the translated role next to the name", async () => {
+    setToken("stored");
+    mocked.fetchMe.mockResolvedValue(makeUser("GATEKEEPER"));
+
+    renderApp("/gate");
+
+    expect(await screen.findByText("Gatekeeper")).toBeInTheDocument();
+    expect(screen.getByText("Dana Levi")).toBeInTheDocument();
+  });
+});

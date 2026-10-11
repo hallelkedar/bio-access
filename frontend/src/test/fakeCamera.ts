@@ -14,14 +14,18 @@ export function installFakeCamera({ width = 1280, height = 720 } = {}) {
   Object.defineProperty(HTMLMediaElement.prototype, "srcObject", { value: null, writable: true, configurable: true });
 
   const drawImage = vi.fn();
-  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({ drawImage } as unknown as CanvasRenderingContext2D);
+  const getImageData = vi.fn((_x: number, _y: number, w: number, h: number) => ({ data: new Uint8ClampedArray(w * h * 4) }));
+  vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue({
+    drawImage,
+    getImageData,
+  } as unknown as CanvasRenderingContext2D);
   const toBlob = vi
     .spyOn(HTMLCanvasElement.prototype, "toBlob")
     .mockImplementation(function (this: HTMLCanvasElement, callback, type) {
       callback(new Blob(["jpeg-bytes"], { type: type ?? "image/png" }));
     });
 
-  return { track, stream, getUserMedia, drawImage, toBlob };
+  return { track, stream, getUserMedia, drawImage, getImageData, toBlob };
 }
 
 export function removeCamera() {

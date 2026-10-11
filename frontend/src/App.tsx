@@ -5,6 +5,7 @@ import type { Role } from "./api/types";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { HOME_BY_ROLE } from "./auth/roles";
+import { GatePage } from "./pages/gate/GatePage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { CheckoutCancelPage, CheckoutSuccessPage } from "./pages/user/CheckoutResultPages";
@@ -118,7 +119,7 @@ export const routes: RouteObject[] = [
       },
       {
         element: <ProtectedRoute roles={["GATEKEEPER"]} />,
-        children: [{ path: "gate", element: <Placeholder title="Gate terminal" /> }],
+        children: [{ path: "gate", element: <GatePage /> }],
       },
       {
         element: <ProtectedRoute roles={["ADMIN"]} />,

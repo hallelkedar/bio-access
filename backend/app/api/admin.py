@@ -7,7 +7,9 @@ from app.core.deps import require_role
 from app.db.session import get_db
 from app.models.user import User, UserRole
 from app.schemas.admin import AccessLogFilters, AccessLogPage, EventStats, SettingsRead, SettingsUpdate, UserFilters, UserPage
+from app.schemas.event import EventRead
 from app.services import admin_logs, admin_users, analytics
+from app.services import event as event_service
 from app.services import settings as settings_service
 from app.services.event import EventNotFoundError
 
@@ -57,3 +59,8 @@ def list_users(
     _: User = Depends(require_admin),
 ) -> UserPage:
     return admin_users.list_users(db, filters)
+
+
+@router.get("/events", response_model=list[EventRead])
+def list_all_events(db: Session = Depends(get_db), _: User = Depends(require_admin)) -> list[EventRead]:
+    return [EventRead.model_validate(event) for event in event_service.list_all_events(db)]

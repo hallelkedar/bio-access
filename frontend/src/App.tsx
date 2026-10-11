@@ -5,6 +5,8 @@ import type { Role } from "./api/types";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { HOME_BY_ROLE } from "./auth/roles";
+import { AdminLayout } from "./pages/admin/AdminLayout";
+import { EventsAdminPage } from "./pages/admin/EventsAdminPage";
 import { GatePage } from "./pages/gate/GatePage";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
@@ -123,7 +125,19 @@ export const routes: RouteObject[] = [
       },
       {
         element: <ProtectedRoute roles={["ADMIN"]} />,
-        children: [{ path: "admin", element: <Placeholder title="Admin dashboard" /> }],
+        children: [
+          {
+            path: "admin",
+            element: <AdminLayout />,
+            children: [
+              { index: true, element: <Placeholder title="Admin dashboard" /> },
+              { path: "events", element: <EventsAdminPage /> },
+              { path: "logs", element: <Placeholder title="Access logs" /> },
+              { path: "users", element: <Placeholder title="Users" /> },
+              { path: "settings", element: <Placeholder title="Settings" /> },
+            ],
+          },
+        ],
       },
       { path: "*", element: <NotFound /> },
     ],

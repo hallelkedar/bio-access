@@ -43,6 +43,11 @@ def get_visible_event(db: Session, event_id: int, user: User) -> Event:
 
 
 
+def list_all_events(db: Session) -> list[Event]:
+    """Admins manage drafts and closed events too, not just the public catalog."""
+    return event_repository.list_all(db)
+
+
 def list_catalog(db: Session, now: datetime | None = None) -> list[Event]:
     return event_repository.list_active(db, now or datetime.now(UTC))
 

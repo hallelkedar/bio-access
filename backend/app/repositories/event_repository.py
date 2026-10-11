@@ -29,6 +29,11 @@ def list_active(db: Session, now: datetime) -> list[Event]:
     return list(db.scalars(query))
 
 
+def list_all(db: Session) -> list[Event]:
+    """Every event in any status, latest start first (admin view)."""
+    return list(db.scalars(select(Event).order_by(Event.starts_at.desc(), Event.id.desc())))
+
+
 def create(db: Session, event: Event) -> Event:
     db.add(event)
     db.flush()

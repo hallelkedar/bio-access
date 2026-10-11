@@ -170,3 +170,15 @@ def test_catalog_lists_only_active_not_ended_events_soonest_first(
     catalog = event_service.list_catalog(db, now=now)
 
     assert [event.id for event in catalog] == [running.id, sooner.id, later.id]
+
+
+def test_list_all_events_includes_every_status_latest_first(db: Session, make_event: MakeEvent) -> None:
+    now = datetime.now(UTC)
+    draft = make_event(EventStatus.DRAFT, starts_at=now + timedelta(days=3), ends_at=now + timedelta(days=3, hours=2))
+    active = make_event(EventStatus.ACTIVE, starts_at=now + timedelta(days=2), ends_at=now + timedelta(days=2, hours=2))
+    closed = make_event(EventStatus.CLOSED, starts_at=now + timedelta(days=1), ends_at=now + timedelta(days=1, hours=2))
+
+    ids = [event.id for event in event_service.list_all_events(db)]
+
+    mine = [i for i in ids if i in {draft.id, active.id, closed.id}]
+    assert mine == [draft.id, active.id, closed.id]

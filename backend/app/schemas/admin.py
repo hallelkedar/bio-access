@@ -99,3 +99,7 @@ class UserPage(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class RoleUpdate(BaseModel):
+    role: UserRole

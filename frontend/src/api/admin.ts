@@ -67,3 +67,9 @@ export async function updateThreshold(value: number): Promise<ThresholdSettings>
   const { data } = await api.put<ThresholdSettings>("/api/admin/settings", { face_match_threshold: value });
   return data;
 }
+
+/** Promote or demote a user (admin only). Admins can't change their own role (409). */
+export async function changeUserRole(userId: number, role: Role): Promise<User> {
+  const { data } = await api.patch<User>(`/api/admin/users/${userId}/role`, { role });
+  return data;
+}

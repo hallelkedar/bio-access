@@ -1,14 +1,16 @@
 import { useEffect, useState } from "react";
 
-import { listUsers, type Page } from "../../api/admin";
+import { changeUserRole, listUsers, type Page } from "../../api/admin";
 import { apiErrorMessage } from "../../api/errors";
 import type { Role, User } from "../../api/types";
+import { useAuth } from "../../auth/AuthContext";
 import { ErrorBox } from "../../components/ErrorBox";
 import { Pagination } from "../../components/Pagination";
 import { Spinner } from "../../components/Spinner";
 import { formatDateTime } from "../../format";
 
 const PAGE_SIZE = 50;
+const ROLE_LABEL: Record<Role, string> = { USER: "User", GATEKEEPER: "Gatekeeper", ADMIN: "Admin" };
 
 export function UsersPage({ searchDelayMs = 300 }: { searchDelayMs?: number }) {
   const [typed, setTyped] = useState("");
@@ -69,7 +71,10 @@ export function UsersPage({ searchDelayMs = 300 }: { searchDelayMs?: number }) {
                     <td className="px-3 py-2">{user.full_name}</td>
                     <td className="px-3 py-2">{user.email}</td>
                     <td className="px-3 py-2">{user.phone ?? "—"}</td>
-                    <td className="px-3 py-2"><span className="rounded bg-slate-100 px-1.5 py-0.5 text-xs">{user.role}</span></td>
+                    <td className="px-3 py-2">
+                      <RoleSelect user={user} onChanged={(updated) =>
+                        setPage((current) => current && { ...current, items: current.items.map((u) => (u.id === updated.id ? updated : u)) })} />
+                    </td>
                     <td className="whitespace-nowrap px-3 py-2">{formatDateTime(user.created_at)}</td>
                   </tr>
                 ))}
@@ -80,5 +85,38 @@ export function UsersPage({ searchDelayMs = 300 }: { searchDelayMs?: number }) {
         </>
       )}
     </section>
+  );
+}
+
+function RoleSelect({ user, onChanged }: { user: User; onChanged: (user: User) => void }) {
+  const { user: me } = useAuth();
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const isMe = me?.id === user.id;
+
+  async function change(role: Role) {
+    if (role === user.role) return;
+    if (!window.confirm(`Make ${user.full_name} ${role === "ADMIN" ? "an" : "a"} ${ROLE_LABEL[role]}?`)) return;
+    setSaving(true);
+    setError(null);
+    try {
+      onChanged(await changeUserRole(user.id, role));
+    } catch (err) {
+      setError(apiErrorMessage(err));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div>
+      <select aria-label={`Role of ${user.full_name}`} value={user.role} disabled={isMe || saving}
+        title={isMe ? "You can't change your own role" : undefined}
+        onChange={(e) => void change(e.target.value as Role)}
+        className="rounded-md border border-slate-300 px-2 py-1 text-xs disabled:opacity-60">
+        {(Object.keys(ROLE_LABEL) as Role[]).map((role) => <option key={role} value={role}>{ROLE_LABEL[role]}</option>)}
+      </select>
+      <ErrorBox message={error} />
+    </div>
   );
 }

@@ -7,7 +7,7 @@ import * as adminApi from "../../api/admin";
 import type { AccessLogRow } from "../../api/admin";
 import * as adminEvents from "../../api/adminEvents";
 import { fromLocalInput } from "../../format";
-import { makeUser } from "../../test/factories";
+import { httpError, makeUser } from "../../test/factories";
 import { makeEvent } from "../../test/factories.events";
 import { filtersFromParams, LogsPage, PAGE_SIZE } from "./LogsPage";
 import { SettingsPage } from "./SettingsPage";
@@ -15,6 +15,9 @@ import { UsersPage } from "./UsersPage";
 
 vi.mock("../../api/admin");
 vi.mock("../../api/adminEvents");
+vi.mock("../../auth/AuthContext", () => ({
+  useAuth: () => ({ user: { id: 99, full_name: "Me Admin", role: "ADMIN" } }),
+}));
 const admin = vi.mocked(adminApi);
 
 const ROW: AccessLogRow = {
@@ -31,6 +34,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.useRealTimers();
+  vi.restoreAllMocks();
 });
 
 function renderAt(element: React.ReactElement, path = "/") {
@@ -130,8 +134,8 @@ describe("UsersPage", () => {
   it("filters by role and shows the table", async () => {
     admin.listUsers.mockResolvedValue({ items: [makeUser("GATEKEEPER", { phone: null })], total: 1, limit: 50, offset: 0 });
     const { user } = renderAt(<UsersPage searchDelayMs={0} />);
-    const table = await screen.findByRole("table");
-    expect(within(table).getByText("GATEKEEPER")).toBeInTheDocument();
+    await screen.findByRole("table");
+    expect(screen.getByLabelText("Role of Dana Levi")).toHaveValue("GATEKEEPER");
 
     await user.selectOptions(screen.getByLabelText("Role"), "GATEKEEPER");
 
@@ -178,5 +182,54 @@ describe("SettingsPage", () => {
     await user.click(await screen.findByRole("button", { name: "Reset to default" }));
 
     expect(admin.updateThreshold).toHaveBeenCalledWith(95);
+  });
+});
+
+
+describe("UsersPage role changes", () => {
+  const staff = makeUser("USER", { id: 12, full_name: "Dana Levi", email: "dana@example.com" });
+  const me = makeUser("ADMIN", { id: 99, full_name: "Me Admin", email: "me@example.com" });
+
+  beforeEach(() => {
+    admin.listUsers.mockResolvedValue({ items: [staff, me], total: 2, limit: 50, offset: 0 });
+  });
+
+  it("promotes after confirmation and updates the row", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    admin.changeUserRole.mockResolvedValue({ ...staff, role: "GATEKEEPER" });
+    const { user } = renderAt(<UsersPage searchDelayMs={0} />);
+
+    await user.selectOptions(await screen.findByLabelText("Role of Dana Levi"), "GATEKEEPER");
+
+    expect(window.confirm).toHaveBeenCalledWith("Make Dana Levi a Gatekeeper?");
+    expect(admin.changeUserRole).toHaveBeenCalledWith(12, "GATEKEEPER");
+    await waitFor(() => expect(screen.getByLabelText("Role of Dana Levi")).toHaveValue("GATEKEEPER"));
+  });
+
+  it("cancelling the confirmation changes nothing", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(false);
+    const { user } = renderAt(<UsersPage searchDelayMs={0} />);
+
+    await user.selectOptions(await screen.findByLabelText("Role of Dana Levi"), "ADMIN");
+
+    expect(admin.changeUserRole).not.toHaveBeenCalled();
+    expect(screen.getByLabelText("Role of Dana Levi")).toHaveValue("USER");
+  });
+
+  it("your own role can't be changed", async () => {
+    renderAt(<UsersPage searchDelayMs={0} />);
+
+    expect(await screen.findByLabelText("Role of Me Admin")).toBeDisabled();
+  });
+
+  it("shows the server's refusal", async () => {
+    vi.spyOn(window, "confirm").mockReturnValue(true);
+    admin.changeUserRole.mockRejectedValue(httpError(404, "user not found"));
+    const { user } = renderAt(<UsersPage searchDelayMs={0} />);
+
+    await user.selectOptions(await screen.findByLabelText("Role of Dana Levi"), "GATEKEEPER");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("User not found");
+    expect(screen.getByLabelText("Role of Dana Levi")).toHaveValue("USER");
   });
 });

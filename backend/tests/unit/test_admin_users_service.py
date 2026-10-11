@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from datetime import UTC, datetime, timedelta
 
 import pytest
@@ -8,6 +9,7 @@ from app.schemas.admin import UserFilters
 from app.services import admin_users
 
 BASE = datetime(2026, 1, 1, tzinfo=UTC)
+MakeUser = Callable[..., User]
 
 
 @pytest.fixture
@@ -59,3 +61,47 @@ def test_paging_keeps_total(db: Session, people: list[User]) -> None:
 
     assert page.total == 4
     assert [user.email for user in page.items] == ["dana.levi@zebra-test.io"]
+
+
+# --- change_role -------------------------------------------------------------------
+
+
+def test_promote_and_demote(db: Session, make_user: MakeUser, caplog: pytest.LogCaptureFixture) -> None:
+    import logging
+
+    admin = make_user(UserRole.ADMIN)
+    staff = make_user(UserRole.USER)
+    caplog.set_level(logging.INFO)
+
+    promoted = admin_users.change_role(db, admin, staff.id, UserRole.GATEKEEPER)
+    db.refresh(staff)
+
+    assert promoted.role == staff.role == UserRole.GATEKEEPER
+    assert f"admin {admin.id} changed user {staff.id} role: USER -> GATEKEEPER" in caplog.text
+    assert admin_users.change_role(db, admin, staff.id, UserRole.USER).role == UserRole.USER
+
+
+def test_same_role_is_a_no_op(db: Session, make_user: MakeUser, caplog: pytest.LogCaptureFixture) -> None:
+    import logging
+
+    admin = make_user(UserRole.ADMIN)
+    staff = make_user(UserRole.GATEKEEPER)
+    caplog.set_level(logging.INFO)
+
+    admin_users.change_role(db, admin, staff.id, UserRole.GATEKEEPER)
+
+    assert "changed user" not in caplog.text
+
+
+def test_cannot_change_own_role(db: Session, make_user: MakeUser) -> None:
+    admin = make_user(UserRole.ADMIN)
+
+    with pytest.raises(admin_users.OwnRoleChangeError):
+        admin_users.change_role(db, admin, admin.id, UserRole.USER)
+    db.refresh(admin)
+    assert admin.role == UserRole.ADMIN
+
+
+def test_unknown_user(db: Session, make_user: MakeUser) -> None:
+    with pytest.raises(admin_users.UserNotFoundError):
+        admin_users.change_role(db, make_user(UserRole.ADMIN), 999_999, UserRole.GATEKEEPER)

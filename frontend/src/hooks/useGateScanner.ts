@@ -2,7 +2,7 @@ import { AxiosError } from "axios";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import { verifyFace, type GateDecision } from "../api/gate";
-import { DENIAL_TEXT } from "../gate/messages";
+import { hintText, type HintCode } from "../gate/messages";
 import { hasMotion } from "../gate/motion";
 import { playApproved, playDenied } from "../gate/sounds";
 import type { CameraController } from "./useCamera";
@@ -13,8 +13,11 @@ export interface ScannerState {
   phase: ScannerPhase;
   /** The decision on screen while phase is "result". */
   decision: GateDecision | null;
-  /** A small, non-alarming message (bad frame, connection hiccup, rate limit). */
+  /** A small, non-alarming message (bad frame, connection hiccup, rate limit), in English. */
   hint: string | null;
+  /** The same message as a code (+ values) so the page can show it in the user's language. */
+  hintCode: HintCode | null;
+  hintVars?: Record<string, number>;
   providerDown: boolean;
 }
 
@@ -40,7 +43,12 @@ interface ScannerInput {
   options?: ScannerOptions;
 }
 
-const IDLE: ScannerState = { phase: "watching", decision: null, hint: null, providerDown: false };
+const IDLE: ScannerState = { phase: "watching", decision: null, hint: null, hintCode: null, providerDown: false };
+
+/** Both forms of a hint: the English text (compatibility) and the code for translation. */
+function hint(code: HintCode | null, vars?: Record<string, number>): Pick<ScannerState, "hint" | "hintCode" | "hintVars"> {
+  return { hint: code ? hintText("en", code, vars) : null, hintCode: code, hintVars: vars };
+}
 
 function retryAfterSeconds(error: AxiosError): number {
   const header = Number(error.response?.headers?.["retry-after"]);
@@ -75,7 +83,7 @@ export function useGateScanner({ camera, eventId, gateId, enabled, sampleFrame, 
       clearTimeout(holdTimer.current);
       if (decision.result === "APPROVED") playApproved();
       else playDenied();
-      update({ phase: "result", decision, hint: null });
+      update({ phase: "result", decision, ...hint(null) });
       holdTimer.current = setTimeout(() => {
         previous.current = null; // start motion detection fresh after the result
         update({ phase: "watching", decision: null });
@@ -88,7 +96,7 @@ export function useGateScanner({ camera, eventId, gateId, enabled, sampleFrame, 
     if (!enabled || camera.status !== "ready" || busy.current) return;
     if (phase.current === "paused") {
       if (Date.now() < pausedUntil.current) return;
-      update({ phase: "watching", hint: null });
+      update({ phase: "watching", ...hint(null) });
     }
     if (phase.current !== "watching") return;
 
@@ -108,10 +116,10 @@ export function useGateScanner({ camera, eventId, gateId, enabled, sampleFrame, 
       const decision = await verify(eventId, gateId, await camera.capture());
       if (decision.reason === "LOW_QUALITY") {
         if (isRetry) retriesLeft.current -= 1; // the person may still be adjusting: try again shortly
-        update({ phase: "watching", hint: DENIAL_TEXT.LOW_QUALITY });
+        update({ phase: "watching", ...hint("look_at_camera") });
       } else if (decision.reason === "PROVIDER_ERROR") {
         retriesLeft.current = 0;
-        update({ phase: "watching", hint: DENIAL_TEXT.PROVIDER_ERROR, providerDown: true });
+        update({ phase: "watching", ...hint("provider_down"), providerDown: true });
       } else {
         retriesLeft.current = 0;
         update({ providerDown: false });
@@ -122,9 +130,9 @@ export function useGateScanner({ camera, eventId, gateId, enabled, sampleFrame, 
       if (error instanceof AxiosError && error.response?.status === 429) {
         const seconds = retryAfterSeconds(error);
         pausedUntil.current = Date.now() + seconds * 1000;
-        update({ phase: "paused", hint: `Too many scans — resuming in ${seconds} s` });
+        update({ phase: "paused", ...hint("rate_limited", { seconds }) });
       } else {
-        update({ phase: "watching", hint: "Connection problem — retrying" });
+        update({ phase: "watching", ...hint("connection_problem") });
       }
     } finally {
       busy.current = false;

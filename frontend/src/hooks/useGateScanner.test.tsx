@@ -160,3 +160,29 @@ describe("useGateScanner", () => {
     expect(sounds.playApproved).toHaveBeenCalled();
   });
 });
+
+describe("hint codes for translation", () => {
+  it("rate limit exposes the code and the seconds", async () => {
+    const config = { headers: {} } as InternalAxiosRequestConfig;
+    const tooMany = new AxiosError("429", "429", config, null, {
+      data: {}, status: 429, statusText: "", headers: { "retry-after": "7" }, config,
+    });
+    const { result } = setup([STILL, MOVED], vi.fn().mockRejectedValue(tooMany));
+
+    await advance(200);
+
+    expect(result.current.state.hintCode).toBe("rate_limited");
+    expect(result.current.state.hintVars).toEqual({ seconds: 7 });
+  });
+
+  it("a bad frame and a provider outage have their codes", async () => {
+    const lowQuality = setup([STILL, MOVED], vi.fn().mockResolvedValue(decision("DENIED", "LOW_QUALITY")));
+    await advance(200);
+    expect(lowQuality.result.current.state.hintCode).toBe("look_at_camera");
+    lowQuality.unmount();
+
+    const down = setup([STILL, MOVED], vi.fn().mockResolvedValue(decision("DENIED", "PROVIDER_ERROR")));
+    await advance(200);
+    expect(down.result.current.state.hintCode).toBe("provider_down");
+  });
+});

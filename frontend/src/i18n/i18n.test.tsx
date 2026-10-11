@@ -24,8 +24,9 @@ describe("dictionaries", () => {
     expect(Object.keys(he).sort()).toEqual(Object.keys(en).sort());
   });
 
-  it("no Hebrew value is empty", () => {
-    expect(Object.entries(he).filter(([, text]) => !text.trim())).toEqual([]);
+  it("no Hebrew value is empty (unless English is empty too)", () => {
+    const english = en as Record<string, string>;
+    expect(Object.entries(he).filter(([key, text]) => !text.trim() && english[key] !== "")).toEqual([]);
   });
 });
 

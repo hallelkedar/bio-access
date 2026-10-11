@@ -2,7 +2,7 @@ import io
 from collections.abc import Collection
 from dataclasses import dataclass
 
-from PIL import Image, UnidentifiedImageError
+from PIL import Image, ImageOps, UnidentifiedImageError
 
 # Detected from the bytes themselves; the client's filename/Content-Type is never trusted.
 ALLOWED_FORMATS = {
@@ -23,6 +23,7 @@ class ImageTooLargeError(Exception):
 
 @dataclass(frozen=True)
 class ValidatedImage:
+    format: str  # Pillow name: JPEG, PNG or WEBP
     content_type: str
     extension: str
     width: int
@@ -46,9 +47,25 @@ def validate_image(
             if width * height > MAX_PIXELS:
                 raise InvalidImageError("image dimensions are too large")
             image.load()  # decodes every pixel: catches truncated or corrupt files
-            content_type, extension = ALLOWED_FORMATS[image.format]
+            image_format = image.format
+            content_type, extension = ALLOWED_FORMATS[image_format]
     except InvalidImageError:
         raise
     except (UnidentifiedImageError, Image.DecompressionBombError, OSError, SyntaxError, ValueError):
         raise InvalidImageError("file is not a valid image") from None
-    return ValidatedImage(content_type, extension, width, height)
+    return ValidatedImage(image_format, content_type, extension, width, height)
+
+
+def sanitize_image(data: bytes, image: ValidatedImage) -> bytes:
+    """Re-encode the decoded pixels into a fresh file of the same format.
+
+    Drops all metadata (EXIF incl. GPS location, comments, text chunks) and any
+    bytes hidden after the image (polyglot files). The EXIF rotation is applied
+    first, so the picture still shows the right way up.
+    """
+    with Image.open(io.BytesIO(data)) as original:
+        pixels = ImageOps.exif_transpose(original)
+        output = io.BytesIO()
+        options = {"quality": 90} if image.format in ("JPEG", "WEBP") else {}
+        pixels.save(output, format=image.format, **options)
+    return output.getvalue()

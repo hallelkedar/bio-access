@@ -62,7 +62,7 @@ beforeEach(() => {
 });
 
 const PAGES: { path: string; en: string; he: string; signedIn: boolean }[] = [
-  { path: "/", en: "Welcome to BioAccess", he: "ברוכים הבאים ל-BioAccess", signedIn: false },
+  { path: "/", en: "Your face is your ticket", he: "הפנים שלכם הן הכרטיס", signedIn: false },
   { path: "/no/such/page", en: "Not found", he: "הדף לא נמצא", signedIn: false },
   { path: "/login", en: "No account?", he: "אין לכם חשבון?", signedIn: false },
   { path: "/register", en: "Create an account", he: "יצירת חשבון", signedIn: false },
@@ -71,7 +71,6 @@ const PAGES: { path: string; en: string; he: string; signedIn: boolean }[] = [
   { path: "/enroll/42", en: "Before we start", he: "לפני שמתחילים", signedIn: true },
   { path: "/checkout/success?ticket_id=42", en: "Payment received!", he: "התשלום התקבל!", signedIn: true },
   { path: "/checkout/cancel?ticket_id=42", en: "Payment cancelled", he: "התשלום בוטל", signedIn: true },
-  { path: "/admin", en: "Not allowed", he: "אין הרשאה", signedIn: true },
 ];
 
 describe("Hebrew pages show no leftover English UI text", () => {

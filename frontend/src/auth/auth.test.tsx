@@ -175,13 +175,20 @@ describe("ProtectedRoute", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/admin"));
   });
 
-  it("shows Not allowed for the wrong role", async () => {
+  it.each([
+    ["USER", "/admin", "/events"],
+    ["USER", "/gate", "/events"],
+    ["GATEKEEPER", "/tickets", "/gate"],
+    ["GATEKEEPER", "/admin/logs", "/gate"],
+    ["ADMIN", "/events", "/admin"],
+    ["ADMIN", "/gate", "/admin"],
+  ] as const)("a %s opening %s is sent to their own home %s", async (role, path, home) => {
     setToken("stored");
-    mocked.fetchMe.mockResolvedValue(makeUser("USER"));
+    mocked.fetchMe.mockResolvedValue(makeUser(role));
 
-    renderApp("/admin");
+    const { router } = renderApp(path);
 
-    expect(await screen.findByRole("heading", { name: "Not allowed" })).toBeInTheDocument();
+    await waitFor(() => expect(router.state.location.pathname).toBe(home));
   });
 });
 

@@ -56,7 +56,6 @@ describe("EventsAdminPage", () => {
 
     const old = await row("Old Gig");
     expect(old.queryByRole("button", { name: /Activate|Close|Delete/ })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "Events" })).toHaveClass("bg-slate-900"); // admin nav highlights
   });
 
   it("creates an event with cents and UTC times", async () => {

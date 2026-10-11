@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useLocation, useNavigate } from "react-router";
+import { Link, Navigate, useLocation, useNavigate } from "react-router";
 
 import { apiErrorMessage } from "../api/errors";
 import { useAuth } from "../auth/AuthContext";
@@ -13,7 +13,7 @@ interface LocationState {
 }
 
 export function LoginPage() {
-  const { login, sessionExpired } = useAuth();
+  const { login, sessionExpired, user } = useAuth();
   const { t, lang } = useLanguage();
   const navigate = useNavigate();
   const state = (useLocation().state ?? {}) as LocationState;
@@ -21,6 +21,10 @@ export function LoginPage() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+
+  if (user && !sending) {
+    return <Navigate to={HOME_BY_ROLE[user.role]} replace />; // already signed in
+  }
 
   async function onSubmit(event: FormEvent) {
     event.preventDefault();

@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link, Navigate, useNavigate } from "react-router";
 
 import { apiErrorMessage } from "../api/errors";
 import { useAuth } from "../auth/AuthContext";
@@ -9,7 +9,7 @@ import { ErrorBox } from "../components/ErrorBox";
 import { FormField } from "../components/FormField";
 
 export function RegisterPage() {
-  const { register } = useAuth();
+  const { register, user } = useAuth();
   const { t, lang } = useLanguage();
   const navigate = useNavigate();
   const [form, setForm] = useState({ full_name: "", email: "", phone: "", password: "" });
@@ -18,6 +18,10 @@ export function RegisterPage() {
 
   function update(field: keyof typeof form) {
     return (event: { target: { value: string } }) => setForm({ ...form, [field]: event.target.value });
+  }
+
+  if (user && !sending) {
+    return <Navigate to={HOME_BY_ROLE[user.role]} replace />; // already signed in
   }
 
   async function onSubmit(event: FormEvent) {

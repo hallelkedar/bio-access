@@ -138,3 +138,15 @@ def test_frame_never_written_to_disk(
 
     assert response.status_code == 200
     assert response.json()["reason"] == "NOT_RECOGNIZED"
+
+
+def test_second_scan_returns_already_entered(
+    client: TestClient, setup: tuple[Event, Ticket, User], make_user: MakeUser, auth_headers: Headers
+) -> None:
+    event, _, _ = setup
+    headers = auth_headers(make_user(UserRole.GATEKEEPER))
+    assert _verify(client, event.id, headers).json()["result"] == "APPROVED"
+
+    response = _verify(client, event.id, headers)
+
+    assert response.json()["reason"] == "ALREADY_ENTERED"

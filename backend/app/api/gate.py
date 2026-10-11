@@ -28,11 +28,16 @@ async def verify(
     _: User = Depends(require_gatekeeper),
     face_provider: FaceProvider = Depends(get_face_provider),
 ) -> GateVerifyResult:
-    """Body: one raw JPEG/PNG camera frame. A denial is a normal 200 answer with a reason."""
+    """Body: one raw JPEG/PNG camera frame. Approval marks the ticket ENTERED.
+
+    A denial is a normal 200 answer with a reason. Every attempt is logged.
+    """
     max_bytes = get_settings().max_upload_mb * 1024 * 1024
     image = await read_body_in_memory(request, max_bytes)
     try:
-        return await run_in_threadpool(access_control.verify_face, db, face_provider, event_id, image, max_bytes)
+        return await run_in_threadpool(
+            access_control.verify_face, db, face_provider, event_id, gate_id, image, max_bytes
+        )
     except EventNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="event not found")
     except ImageTooLargeError:

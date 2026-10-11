@@ -1,4 +1,5 @@
 import type { AccessReason } from "../../api/gate";
+import { translate, type Lang } from "../../i18n/translate";
 
 /** Validated sequential blue (dataviz reference palette, light mode). */
 export const CHART_COLORS = {
@@ -29,6 +30,7 @@ export function labelIndices(total: number, maxLabels: number): Set<number> {
   return shown;
 }
 
+/** English labels (kept for compatibility); the UI uses reasonLabel() in the current language. */
 export const REASON_LABEL: Record<AccessReason, string> = {
   NONE: "Approved",
   NOT_RECOGNIZED: "Not recognized",
@@ -40,11 +42,15 @@ export const REASON_LABEL: Record<AccessReason, string> = {
   PROVIDER_ERROR: "Face service down",
 };
 
+export function reasonLabel(lang: Lang, reason: AccessReason): string {
+  return translate(lang, `reason.${reason}`);
+}
+
 /** Denial reasons as sorted rows (largest first); zero rows only when asked. */
-export function reasonRows(byReason: Partial<Record<AccessReason, number>>, includeZero = false) {
+export function reasonRows(byReason: Partial<Record<AccessReason, number>>, includeZero = false, lang: Lang = "en") {
   return (Object.keys(REASON_LABEL) as AccessReason[])
     .filter((reason) => reason !== "NONE")
-    .map((reason) => ({ reason, label: REASON_LABEL[reason], value: byReason[reason] ?? 0 }))
+    .map((reason) => ({ reason, label: reasonLabel(lang, reason), value: byReason[reason] ?? 0 }))
     .filter((row) => includeZero || row.value > 0)
-    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label));
+    .sort((a, b) => b.value - a.value || a.label.localeCompare(b.label, lang));
 }

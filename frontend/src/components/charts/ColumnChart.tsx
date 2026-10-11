@@ -1,5 +1,6 @@
 import { useState } from "react";
 
+import { useLanguage } from "../../i18n/LanguageProvider";
 import { CHART_COLORS, labelIndices, niceMax, ticks } from "./chartMath";
 
 export interface Column {
@@ -13,6 +14,7 @@ export interface Column {
 
 /** A single-series column chart: one hue, thin bars, hover/focus tooltip, table view. */
 export function ColumnChart({ title, columns, unit }: { title: string; columns: Column[]; unit: string }) {
+  const { t } = useLanguage();
   const [active, setActive] = useState<number | null>(null);
   const [asTable, setAsTable] = useState(false);
   const max = niceMax(Math.max(0, ...columns.map((c) => c.value)));
@@ -24,21 +26,21 @@ export function ColumnChart({ title, columns, unit }: { title: string; columns: 
       <figcaption className="mb-3 flex items-center justify-between">
         <span className="font-semibold text-slate-900">{title}</span>
         <button type="button" onClick={() => setAsTable((t) => !t)} className="text-sm text-blue-700 underline">
-          {asTable ? "View as chart" : "View as table"}
+          {asTable ? t("chart.viewChart") : t("chart.viewTable")}
         </button>
       </figcaption>
       {asTable ? (
         <table className="w-full text-sm">
-          <thead className="text-left text-slate-500"><tr><th>Time</th><th className="text-right">{unit}</th></tr></thead>
+          <thead className="text-start text-slate-500"><tr><th className="text-start">{t("chart.time")}</th><th className="text-end">{unit}</th></tr></thead>
           <tbody>
             {columns.map((c) => (
-              <tr key={c.key} className="border-t border-slate-100"><td>{c.description}</td><td className="text-right">{c.value}</td></tr>
+              <tr key={c.key} className="border-t border-slate-100"><td>{c.description}</td><td className="text-end">{c.value}</td></tr>
             ))}
           </tbody>
         </table>
       ) : (
         <div className="flex gap-2">
-          <div className="flex h-48 flex-col-reverse justify-between text-right text-xs text-slate-500" aria-hidden>
+          <div className="flex h-48 flex-col-reverse justify-between text-end text-xs text-slate-500" aria-hidden>
             {ticks(max).map((t) => <span key={t} className="leading-none">{Math.round(t)}</span>)}
           </div>
           <div className="relative flex-1">

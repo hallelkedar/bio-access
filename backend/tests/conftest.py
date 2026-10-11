@@ -15,6 +15,8 @@ from app.db.session import get_db
 from app.main import app
 from app.models.event import Event, EventStatus
 from app.models.user import User, UserRole
+from app.providers.payment import get_payment_provider
+from app.providers.payment.fake import FakePaymentProvider
 from app.repositories import user_repository
 
 TEST_DB_NAME = "bioaccess_test"
@@ -62,6 +64,8 @@ def db(engine: Engine) -> Iterator[Session]:
 @pytest.fixture
 def client(db: Session) -> Iterator[TestClient]:
     app.dependency_overrides[get_db] = lambda: db
+    # Never call a real payment provider from tests, whatever .env says.
+    app.dependency_overrides[get_payment_provider] = FakePaymentProvider
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

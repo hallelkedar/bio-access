@@ -2,7 +2,6 @@ import json
 
 import pytest
 
-from app.providers.payment import get_payment_provider
 from app.providers.payment.base import CheckoutSession, InvalidWebhookError, WebhookEventType
 from app.providers.payment.fake import SIGNATURE_HEADER, FakePaymentProvider
 
@@ -92,7 +91,3 @@ def test_malformed_payload_with_valid_signature_rejected(provider: FakePaymentPr
 
     with pytest.raises(InvalidWebhookError):
         provider.parse_webhook(payload, {SIGNATURE_HEADER: provider.sign(payload)})
-
-
-def test_factory_returns_fake_by_default() -> None:
-    assert isinstance(get_payment_provider(), FakePaymentProvider)

@@ -15,6 +15,8 @@ from app.db.session import get_db, get_session_factory
 from app.main import app
 from app.models.event import Event, EventStatus
 from app.models.user import User, UserRole
+from app.providers.face import get_face_provider
+from app.providers.face.fake import FakeFaceProvider
 from app.providers.notify import get_notifier
 from app.providers.payment import get_payment_provider
 from app.providers.storage import get_storage
@@ -75,7 +77,14 @@ def storage() -> InMemoryStorage:
 
 
 @pytest.fixture
-def client(db: Session, notifier: RecordingNotifier, storage: InMemoryStorage) -> Iterator[TestClient]:
+def face_provider() -> FakeFaceProvider:
+    return FakeFaceProvider()
+
+
+@pytest.fixture
+def client(
+    db: Session, notifier: RecordingNotifier, storage: InMemoryStorage, face_provider: FakeFaceProvider
+) -> Iterator[TestClient]:
     app.dependency_overrides[get_db] = lambda: db
     # Background tasks get their own sessions, still inside the test transaction.
     app.dependency_overrides[get_session_factory] = lambda: (
@@ -85,6 +94,7 @@ def client(db: Session, notifier: RecordingNotifier, storage: InMemoryStorage) -
     app.dependency_overrides[get_payment_provider] = FakePaymentProvider
     app.dependency_overrides[get_notifier] = lambda: notifier
     app.dependency_overrides[get_storage] = lambda: storage
+    app.dependency_overrides[get_face_provider] = lambda: face_provider
     with TestClient(app) as test_client:
         yield test_client
     app.dependency_overrides.clear()

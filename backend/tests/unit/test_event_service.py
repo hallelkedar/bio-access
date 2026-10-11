@@ -7,6 +7,8 @@ from sqlalchemy.orm import Session
 from app.models.event import Event, EventStatus
 from app.models.ticket import Ticket
 from app.models.user import User, UserRole
+from app.providers.face.base import FaceProviderError
+from app.providers.face.fake import FakeFaceProvider
 from app.schemas.event import EventCreate, EventUpdate
 from app.services import event as event_service
 
@@ -76,7 +78,7 @@ def test_active_event_visible_to_regular_user(
 def test_update_changes_only_sent_fields(db: Session, make_event: MakeEvent) -> None:
     event = make_event(name="Old name", capacity=100)
 
-    updated = event_service.update_event(db, event.id, EventUpdate(name="New name"))
+    updated = event_service.update_event(db, event.id, EventUpdate(name="New name"), FakeFaceProvider())
 
     assert updated.name == "New name"
     assert updated.capacity == 100
@@ -85,9 +87,37 @@ def test_update_changes_only_sent_fields(db: Session, make_event: MakeEvent) -> 
 def test_update_can_activate_event(db: Session, make_event: MakeEvent) -> None:
     event = make_event(EventStatus.DRAFT)
 
-    updated = event_service.update_event(db, event.id, EventUpdate(status=EventStatus.ACTIVE))
+    faces = FakeFaceProvider()
+
+    updated = event_service.update_event(db, event.id, EventUpdate(status=EventStatus.ACTIVE), faces)
 
     assert updated.status == EventStatus.ACTIVE
+    assert updated.face_collection_id == f"bioaccess-event-{event.id}"
+    assert faces.face_count(event.id) == 0  # collection exists (empty)
+
+
+def test_update_without_activation_does_not_touch_faces(db: Session, make_event: MakeEvent) -> None:
+    event = make_event(EventStatus.DRAFT)
+    faces = FakeFaceProvider()
+    faces.available = False  # would raise if called
+
+    updated = event_service.update_event(db, event.id, EventUpdate(name="Renamed"), faces)
+
+    assert updated.face_collection_id is None
+
+
+def test_activation_fails_cleanly_when_face_provider_down(db: Session, make_event: MakeEvent) -> None:
+    event = make_event(EventStatus.DRAFT, name="Draft")
+    faces = FakeFaceProvider()
+    faces.available = False
+
+    with pytest.raises(FaceProviderError):
+        event_service.update_event(db, event.id, EventUpdate(status=EventStatus.ACTIVE, name="Live"), faces)
+
+    db.refresh(event)
+    assert event.status == EventStatus.DRAFT
+    assert event.name == "Draft"
+    assert event.face_collection_id is None
 
 
 def test_update_rejects_end_before_existing_start(db: Session, make_event: MakeEvent) -> None:
@@ -95,7 +125,7 @@ def test_update_rejects_end_before_existing_start(db: Session, make_event: MakeE
 
     with pytest.raises(event_service.InvalidEventError):
         event_service.update_event(
-            db, event.id, EventUpdate(ends_at=event.starts_at - timedelta(minutes=1))
+            db, event.id, EventUpdate(ends_at=event.starts_at - timedelta(minutes=1)), FakeFaceProvider()
         )
 
 

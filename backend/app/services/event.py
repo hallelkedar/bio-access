@@ -4,6 +4,7 @@ from sqlalchemy.orm import Session
 
 from app.models.event import Event, EventStatus
 from app.models.user import User
+from app.providers.face.base import FaceProvider
 from app.repositories import event_repository, ticket_repository
 from app.schemas.event import EventCreate, EventUpdate
 
@@ -46,7 +47,14 @@ def list_catalog(db: Session, now: datetime | None = None) -> list[Event]:
     return event_repository.list_active(db, now or datetime.now(UTC))
 
 
-def update_event(db: Session, event_id: int, data: EventUpdate) -> Event:
+def update_event(
+    db: Session, event_id: int, data: EventUpdate, face_provider: FaceProvider
+) -> Event:
+    """Apply a partial update. Activating an event creates its face collection first.
+
+    Raises FaceProviderError (nothing is saved) if the collection can't be created,
+    so an event never goes ACTIVE without somewhere to enroll faces.
+    """
     event = get_event(db, event_id)
     changes = data.model_dump(exclude_unset=True)
 
@@ -56,9 +64,15 @@ def update_event(db: Session, event_id: int, data: EventUpdate) -> Event:
     if ends_at <= starts_at:
         raise InvalidEventError("ends_at must be after starts_at")
 
-    for field, value in changes.items():
-        setattr(event, field, value)
-    db.commit()
+    try:
+        if changes.get("status") == EventStatus.ACTIVE and event.status != EventStatus.ACTIVE:
+            event.face_collection_id = face_provider.ensure_collection(event.id)
+        for field, value in changes.items():
+            setattr(event, field, value)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
     return event
 
 

@@ -2,9 +2,11 @@ from collections.abc import Callable
 
 import pytest
 from fastapi.testclient import TestClient
+from sqlalchemy.orm import Session
 
 from app.models.event import Event, EventStatus
 from app.models.user import User, UserRole
+from app.providers.face.fake import FakeFaceProvider
 
 MakeUser = Callable[..., User]
 MakeEvent = Callable[..., Event]
@@ -138,3 +140,38 @@ def test_catalog_shows_only_active_events(
 
 def test_catalog_requires_login(client: TestClient) -> None:
     assert client.get(URL).status_code == 401
+
+
+def test_activation_creates_face_collection(
+    client: TestClient,
+    db: Session,
+    make_user: MakeUser,
+    make_event: MakeEvent,
+    auth_headers: Headers,
+    face_provider: FakeFaceProvider,
+) -> None:
+    event = make_event(EventStatus.DRAFT)
+
+    response = client.put(f"{URL}/{event.id}", json={"status": "ACTIVE"}, headers=auth_headers(make_user(UserRole.ADMIN)))
+
+    assert response.status_code == 200
+    db.refresh(event)
+    assert event.face_collection_id == f"bioaccess-event-{event.id}"
+
+
+def test_activation_returns_503_when_face_provider_down(
+    client: TestClient,
+    db: Session,
+    make_user: MakeUser,
+    make_event: MakeEvent,
+    auth_headers: Headers,
+    face_provider: FakeFaceProvider,
+) -> None:
+    event = make_event(EventStatus.DRAFT)
+    face_provider.available = False
+
+    response = client.put(f"{URL}/{event.id}", json={"status": "ACTIVE"}, headers=auth_headers(make_user(UserRole.ADMIN)))
+
+    assert response.status_code == 503
+    db.refresh(event)
+    assert event.status == EventStatus.DRAFT

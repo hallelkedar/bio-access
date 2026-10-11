@@ -6,6 +6,8 @@ from app.core.deps import get_current_user, require_role
 from app.db.session import get_db
 from app.models.user import User, UserRole
 from app.schemas.event import EventCreate, EventRead, EventUpdate
+from app.providers.face import get_face_provider
+from app.providers.face.base import FaceProvider, FaceProviderError
 from app.providers.storage import get_storage
 from app.providers.storage.base import StorageService
 from app.services import event as event_service
@@ -51,11 +53,16 @@ def update_event(
     data: EventUpdate,
     db: Session = Depends(get_db),
     _: User = Depends(require_admin),
+    face_provider: FaceProvider = Depends(get_face_provider),
 ) -> EventRead:
     try:
-        return EventRead.model_validate(event_service.update_event(db, event_id, data))
+        return EventRead.model_validate(event_service.update_event(db, event_id, data, face_provider))
     except event_service.EventNotFoundError:
         raise _not_found()
+    except FaceProviderError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="face service unavailable, try again"
+        )
     except event_service.InvalidEventError as exc:
         raise HTTPException(status_code=status.HTTP_422_UNPROCESSABLE_CONTENT, detail=str(exc))
 

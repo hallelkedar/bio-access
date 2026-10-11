@@ -1,9 +1,12 @@
 import asyncio
 import logging
+from datetime import datetime
 
 from starlette.websockets import WebSocket
 
-from app.schemas.ws import WsMessage
+from app.models.access_log import AccessMethod
+from app.schemas.gate import GateVerifyResult
+from app.schemas.ws import AccessEventPayload, WsMessage
 
 logger = logging.getLogger(__name__)
 
@@ -49,3 +52,28 @@ class ConnectionManager:
 
 
 manager = ConnectionManager()
+
+
+def access_event_message(
+    event_id: int, gate_id: str, method: AccessMethod, decision: GateVerifyResult, at: datetime
+) -> WsMessage:
+    payload = AccessEventPayload(
+        event_id=event_id,
+        gate_id=gate_id,
+        method=method,
+        result=decision.result,
+        reason=decision.reason,
+        ticket_id=decision.ticket_id,
+        user_name=decision.user_name,
+        similarity=decision.similarity,
+        timestamp=at,
+    )
+    return WsMessage(type="access_event", payload=payload.model_dump(mode="json"))
+
+
+async def publish_access_event(message: WsMessage) -> None:
+    """Background task after a gate decision. Never raises: the feed can't break the gate."""
+    try:
+        await manager.broadcast(message)
+    except Exception:
+        logger.exception("could not publish access event")

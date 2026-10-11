@@ -1,6 +1,8 @@
 import asyncio
 from typing import Any
 
+import pytest
+
 from app.schemas.ws import WsMessage
 from app.services.realtime import ConnectionManager
 
@@ -56,3 +58,41 @@ def test_disconnect_removes_client() -> None:
     asyncio.run(scenario())
     assert socket.sent == []
     assert len(manager) == 0
+
+
+def test_access_event_message_contents() -> None:
+    from datetime import UTC, datetime
+
+    from app.models.access_log import AccessMethod, AccessReason, AccessResult
+    from app.schemas.gate import GateVerifyResult
+    from app.services.realtime import access_event_message
+
+    decision = GateVerifyResult(result=AccessResult.DENIED, reason=AccessReason.NOT_RECOGNIZED)
+
+    message = access_event_message(7, "north-1", AccessMethod.QR, decision, datetime(2026, 12, 1, 20, 0, tzinfo=UTC))
+
+    assert message.type == "access_event"
+    assert message.payload == {
+        "event_id": 7,
+        "gate_id": "north-1",
+        "method": "QR",
+        "result": "DENIED",
+        "reason": "NOT_RECOGNIZED",
+        "ticket_id": None,
+        "user_name": None,
+        "similarity": None,
+        "timestamp": "2026-12-01T20:00:00Z",
+    }
+
+
+def test_publish_never_raises(monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture) -> None:
+    from app.services import realtime
+
+    async def broken_broadcast(_: WsMessage) -> int:
+        raise RuntimeError("feed down")
+
+    monkeypatch.setattr(realtime.manager, "broadcast", broken_broadcast)
+
+    asyncio.run(realtime.publish_access_event(WsMessage(type="access_event")))  # no exception
+
+    assert "could not publish access event" in caplog.text

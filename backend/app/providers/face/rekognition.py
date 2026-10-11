@@ -3,7 +3,26 @@ from typing import Any
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
-from app.providers.face.base import FaceMatch, FaceProvider, FaceProviderError, QualityResult, collection_id_for
+from app.providers.face.base import (
+    FaceMatch,
+    FaceProvider,
+    FaceProviderError,
+    QualityIssue,
+    QualityResult,
+    collection_id_for,
+)
+from app.utils.image_validation import InvalidImageError
+
+# Starting values for the enrollment quality gate; tune them with real tests.
+MIN_CONFIDENCE = 90.0  # % that the detection is a face
+MIN_BRIGHTNESS = 40.0  # Rekognition Quality.Brightness, 0-100
+MIN_SHARPNESS = 20.0  # Rekognition Quality.Sharpness, 0-100
+MAX_POSE_DEGREES = 25.0  # |yaw| and |pitch|
+MIN_FACE_WIDTH = 0.20  # face box width as a fraction of the image width
+BACKGROUND_FACE_WIDTH = 0.05  # smaller faces are ignored when counting faces
+
+# Rekognition rejects these images; they are the caller's fault, not an outage.
+_BAD_IMAGE_ERRORS = {"InvalidImageFormatException", "ImageTooLargeException", "InvalidParameterException"}
 
 
 def _error_code(exc: ClientError) -> str:
@@ -47,9 +66,43 @@ class RekognitionFaceProvider(FaceProvider):
         except BotoCoreError as exc:
             raise FaceProviderError(f"delete_collection failed: {type(exc).__name__}") from None
 
+    def check_quality(self, image: bytes) -> QualityResult:
+        """DetectFaces, then report every problem at once so the UI can show them together."""
+        try:
+            response = self._client.detect_faces(Image={"Bytes": image}, Attributes=["DEFAULT"])
+        except ClientError as exc:
+            if _error_code(exc) in _BAD_IMAGE_ERRORS:
+                raise InvalidImageError("image must be a JPEG or PNG up to 5 MB") from None
+            raise FaceProviderError(f"detect_faces failed: {_error_code(exc)}") from None
+        except BotoCoreError as exc:
+            raise FaceProviderError(f"detect_faces failed: {type(exc).__name__}") from None
+
+        faces = [
+            face
+            for face in response.get("FaceDetails", [])
+            if face["BoundingBox"]["Width"] >= BACKGROUND_FACE_WIDTH
+        ]
+        if not faces:
+            return QualityResult((QualityIssue.NO_FACE,))
+        if len(faces) > 1:
+            return QualityResult((QualityIssue.MULTIPLE_FACES,))
+
+        face = faces[0]
+        issues: list[QualityIssue] = []
+        if face["Confidence"] < MIN_CONFIDENCE:
+            issues.append(QualityIssue.LOW_CONFIDENCE)
+        if face["BoundingBox"]["Width"] < MIN_FACE_WIDTH:
+            issues.append(QualityIssue.TOO_SMALL)
+        if face["Quality"]["Brightness"] < MIN_BRIGHTNESS:
+            issues.append(QualityIssue.TOO_DARK)
+        if face["Quality"]["Sharpness"] < MIN_SHARPNESS:
+            issues.append(QualityIssue.BLURRY)
+        pose = face["Pose"]
+        if abs(pose["Yaw"]) > MAX_POSE_DEGREES or abs(pose["Pitch"]) > MAX_POSE_DEGREES:
+            issues.append(QualityIssue.BAD_POSE)
+        return QualityResult(tuple(issues))
+
     # Implemented in later BUILD_PLAN steps.
-    def check_quality(self, image: bytes) -> QualityResult:  # 6.4
-        raise NotImplementedError
 
     def enroll(self, event_id: int, ticket_id: int, image: bytes) -> str:  # 6.5
         raise NotImplementedError

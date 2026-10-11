@@ -8,8 +8,9 @@ from botocore.stub import Stubber
 
 from app.core.config import Settings
 from app.providers import face as face_providers
-from app.providers.face.base import FaceProviderError
+from app.providers.face.base import FaceProviderError, QualityIssue, QualityResult
 from app.providers.face.rekognition import RekognitionFaceProvider
+from app.utils.image_validation import InvalidImageError
 
 
 @pytest.fixture
@@ -108,3 +109,92 @@ def test_factory_rekognition_without_keys_fails_fast(monkeypatch: pytest.MonkeyP
 
     with pytest.raises(RuntimeError, match="AWS_ACCESS_KEY_ID"):
         face_providers.get_face_provider()
+
+
+# --- check_quality (DetectFaces) ---------------------------------------------
+
+IMAGE = b"\xff\xd8 fake jpeg bytes"
+DETECT_PARAMS = {"Image": {"Bytes": IMAGE}, "Attributes": ["DEFAULT"]}
+
+
+def _face(
+    width: float = 0.4,
+    confidence: float = 99.9,
+    brightness: float = 80.0,
+    sharpness: float = 70.0,
+    yaw: float = 0.0,
+    pitch: float = 0.0,
+) -> dict[str, object]:
+    return {
+        "BoundingBox": {"Width": width, "Height": width * 1.3, "Left": 0.3, "Top": 0.2},
+        "Confidence": confidence,
+        "Quality": {"Brightness": brightness, "Sharpness": sharpness},
+        "Pose": {"Roll": 0.0, "Yaw": yaw, "Pitch": pitch},
+    }
+
+
+def _quality(stubbed: tuple[RekognitionFaceProvider, Stubber], *faces: dict[str, object]) -> QualityResult:
+    provider, stubber = stubbed
+    stubber.add_response("detect_faces", {"FaceDetails": list(faces)}, DETECT_PARAMS)
+    return provider.check_quality(IMAGE)
+
+
+def test_good_face_passes(stubbed: tuple[RekognitionFaceProvider, Stubber]) -> None:
+    result = _quality(stubbed, _face())
+
+    assert result.ok
+
+
+def test_no_face(stubbed: tuple[RekognitionFaceProvider, Stubber]) -> None:
+    assert _quality(stubbed).issues == (QualityIssue.NO_FACE,)
+
+
+def test_two_faces(stubbed: tuple[RekognitionFaceProvider, Stubber]) -> None:
+    assert _quality(stubbed, _face(), _face(width=0.3)).issues == (QualityIssue.MULTIPLE_FACES,)
+
+
+def test_tiny_background_face_is_ignored(stubbed: tuple[RekognitionFaceProvider, Stubber]) -> None:
+    assert _quality(stubbed, _face(), _face(width=0.03)).ok
+
+
+@pytest.mark.parametrize(
+    ("face", "issue"),
+    [
+        (_face(confidence=80), QualityIssue.LOW_CONFIDENCE),
+        (_face(width=0.1), QualityIssue.TOO_SMALL),
+        (_face(brightness=20), QualityIssue.TOO_DARK),
+        (_face(sharpness=5), QualityIssue.BLURRY),
+        (_face(yaw=40), QualityIssue.BAD_POSE),
+        (_face(pitch=-35), QualityIssue.BAD_POSE),
+    ],
+)
+def test_each_threshold(
+    stubbed: tuple[RekognitionFaceProvider, Stubber], face: dict[str, object], issue: QualityIssue
+) -> None:
+    assert _quality(stubbed, face).issues == (issue,)
+
+
+def test_all_issues_reported_together(stubbed: tuple[RekognitionFaceProvider, Stubber]) -> None:
+    result = _quality(stubbed, _face(brightness=10, sharpness=5, yaw=60))
+
+    assert set(result.issues) == {QualityIssue.TOO_DARK, QualityIssue.BLURRY, QualityIssue.BAD_POSE}
+
+
+@pytest.mark.parametrize("code", ["InvalidImageFormatException", "ImageTooLargeException"])
+def test_rejected_image_raises_invalid_image(
+    stubbed: tuple[RekognitionFaceProvider, Stubber], code: str
+) -> None:
+    provider, stubber = stubbed
+    stubber.add_client_error("detect_faces", service_error_code=code)
+
+    with pytest.raises(InvalidImageError):
+        provider.check_quality(IMAGE)
+
+
+def test_detect_faces_access_denied(stubbed: tuple[RekognitionFaceProvider, Stubber]) -> None:
+    provider, stubber = stubbed
+    stubber.add_client_error("detect_faces", service_error_code="AccessDeniedException")
+
+    with pytest.raises(FaceProviderError, match="AccessDeniedException") as exc_info:
+        provider.check_quality(IMAGE)
+    assert "fake jpeg" not in str(exc_info.value)

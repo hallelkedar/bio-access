@@ -15,6 +15,7 @@ class QualityIssue(str, enum.Enum):
     TOO_DARK = "TOO_DARK"
     BLURRY = "BLURRY"
     BAD_POSE = "BAD_POSE"
+    TOO_SMALL = "TOO_SMALL"  # face too far from the camera
 
 
 @dataclass(frozen=True)

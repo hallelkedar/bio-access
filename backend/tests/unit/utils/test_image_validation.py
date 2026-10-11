@@ -37,7 +37,7 @@ def test_truncated_image_rejected() -> None:
 
 
 def test_gif_rejected() -> None:
-    with pytest.raises(InvalidImageError, match="JPEG, PNG or WebP"):
+    with pytest.raises(InvalidImageError, match="only JPEG, PNG, WEBP images"):
         validate_image(image_bytes("GIF"), MB)
 
 
@@ -46,3 +46,8 @@ def test_huge_dimensions_rejected(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(InvalidImageError, match="dimensions"):
         validate_image(image_bytes("PNG", (10, 10)), MB)
+
+
+def test_allowed_formats_can_be_narrowed() -> None:
+    with pytest.raises(InvalidImageError, match="only JPEG, PNG images"):
+        validate_image(image_bytes("WEBP"), MB, allowed_formats=("JPEG", "PNG"))

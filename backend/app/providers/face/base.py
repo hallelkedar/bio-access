@@ -42,6 +42,14 @@ class CollectionNotFoundError(FaceProviderError):
     pass
 
 
+class FaceNotIndexedError(Exception):
+    """The provider found the photo unusable at indexing time (a quality problem, not an outage)."""
+
+    def __init__(self, issues: tuple[QualityIssue, ...]) -> None:
+        super().__init__(", ".join(issue.value for issue in issues))
+        self.issues = issues
+
+
 class FaceProvider(ABC):
     """Face recognition backend.
 

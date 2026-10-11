@@ -4,7 +4,9 @@ import boto3
 from botocore.exceptions import BotoCoreError, ClientError
 
 from app.providers.face.base import (
+    CollectionNotFoundError,
     FaceMatch,
+    FaceNotIndexedError,
     FaceProvider,
     FaceProviderError,
     QualityIssue,
@@ -23,6 +25,17 @@ BACKGROUND_FACE_WIDTH = 0.05  # smaller faces are ignored when counting faces
 
 # Rekognition rejects these images; they are the caller's fault, not an outage.
 _BAD_IMAGE_ERRORS = {"InvalidImageFormatException", "ImageTooLargeException", "InvalidParameterException"}
+
+# IndexFaces UnindexedFaces reasons -> our quality issues.
+_UNINDEXED_REASONS = {
+    "EXCEEDS_MAX_FACES": QualityIssue.MULTIPLE_FACES,
+    "EXTREME_POSE": QualityIssue.BAD_POSE,
+    "LOW_BRIGHTNESS": QualityIssue.TOO_DARK,
+    "LOW_SHARPNESS": QualityIssue.BLURRY,
+    "LOW_CONFIDENCE": QualityIssue.LOW_CONFIDENCE,
+    "SMALL_BOUNDING_BOX": QualityIssue.TOO_SMALL,
+    "LOW_FACE_QUALITY": QualityIssue.LOW_CONFIDENCE,
+}
 
 
 def _error_code(exc: ClientError) -> str:
@@ -102,10 +115,41 @@ class RekognitionFaceProvider(FaceProvider):
             issues.append(QualityIssue.BAD_POSE)
         return QualityResult(tuple(issues))
 
-    # Implemented in later BUILD_PLAN steps.
+    def enroll(self, event_id: int, ticket_id: int, image: bytes) -> str:
+        """IndexFaces: store one face vector tagged with the ticket (ExternalImageId)."""
+        try:
+            response = self._client.index_faces(
+                CollectionId=collection_id_for(event_id),
+                Image={"Bytes": image},
+                ExternalImageId=str(ticket_id),
+                MaxFaces=1,
+                QualityFilter="AUTO",
+                DetectionAttributes=[],
+            )
+        except ClientError as exc:
+            code = _error_code(exc)
+            if code in _BAD_IMAGE_ERRORS:
+                raise InvalidImageError("image must be a JPEG or PNG up to 5 MB") from None
+            if code == "ResourceNotFoundException":
+                raise CollectionNotFoundError(collection_id_for(event_id)) from None
+            raise FaceProviderError(f"index_faces failed: {code}") from None
+        except BotoCoreError as exc:
+            raise FaceProviderError(f"index_faces failed: {type(exc).__name__}") from None
 
-    def enroll(self, event_id: int, ticket_id: int, image: bytes) -> str:  # 6.5
-        raise NotImplementedError
+        records = response.get("FaceRecords", [])
+        if not records:
+            reasons = [
+                reason
+                for unindexed in response.get("UnindexedFaces", [])
+                for reason in unindexed.get("Reasons", [])
+            ]
+            issues = tuple(
+                dict.fromkeys(_UNINDEXED_REASONS.get(r, QualityIssue.LOW_CONFIDENCE) for r in reasons)
+            )
+            raise FaceNotIndexedError(issues or (QualityIssue.NO_FACE,))
+        return str(records[0]["Face"]["FaceId"])
+
+    # Implemented in later BUILD_PLAN steps.
 
     def search(self, event_id: int, image: bytes, threshold: float) -> FaceMatch | None:  # 6.6
         raise NotImplementedError

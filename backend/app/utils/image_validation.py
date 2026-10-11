@@ -1,4 +1,5 @@
 import io
+from collections.abc import Collection
 from dataclasses import dataclass
 
 from PIL import Image, UnidentifiedImageError
@@ -28,16 +29,19 @@ class ValidatedImage:
     height: int
 
 
-def validate_image(data: bytes, max_bytes: int) -> ValidatedImage:
-    """Check size, then fully decode the image in memory; only JPEG/PNG/WebP pass."""
+def validate_image(
+    data: bytes, max_bytes: int, allowed_formats: Collection[str] = tuple(ALLOWED_FORMATS)
+) -> ValidatedImage:
+    """Check size, then fully decode the image in memory; only allowed_formats pass."""
     if len(data) > max_bytes:
         raise ImageTooLargeError(f"file is larger than {max_bytes} bytes")
     if not data:
         raise InvalidImageError("file is empty")
     try:
         with Image.open(io.BytesIO(data)) as image:
-            if image.format not in ALLOWED_FORMATS:
-                raise InvalidImageError("only JPEG, PNG or WebP images are allowed")
+            if image.format not in ALLOWED_FORMATS or image.format not in allowed_formats:
+                names = ", ".join(sorted(f for f in ALLOWED_FORMATS if f in allowed_formats))
+                raise InvalidImageError(f"only {names} images are allowed")
             width, height = image.size
             if width * height > MAX_PIXELS:
                 raise InvalidImageError("image dimensions are too large")

@@ -8,6 +8,7 @@ import { HOME_BY_ROLE } from "./auth/roles";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { CheckoutCancelPage, CheckoutSuccessPage } from "./pages/user/CheckoutResultPages";
+import { EnrollPage } from "./pages/user/EnrollPage";
 import { EventsPage } from "./pages/user/EventsPage";
 import { MyTicketsPage } from "./pages/user/MyTicketsPage";
 
@@ -112,7 +113,7 @@ export const routes: RouteObject[] = [
           { path: "checkout/success", element: <CheckoutSuccessPage /> },
           { path: "checkout/cancel", element: <CheckoutCancelPage /> },
           { path: "tickets", element: <MyTicketsPage /> },
-          { path: "enroll/:ticketId", element: <Placeholder title="Face enrollment" /> },
+          { path: "enroll/:ticketId", element: <EnrollPage /> },
         ],
       },
       {

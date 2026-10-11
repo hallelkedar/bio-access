@@ -16,3 +16,12 @@ export async function myTickets(): Promise<MyTicket[]> {
   const { data } = await api.get<MyTicket[]>("/api/tickets/me");
   return data;
 }
+
+/**
+ * The QR PNG needs the JWT, which an <img src> can't send: download it as a blob instead.
+ * Returns an object URL; the caller must URL.revokeObjectURL() it when done.
+ */
+export async function fetchQrImage(ticketId: number): Promise<string> {
+  const { data } = await api.get<Blob>(`/api/tickets/${ticketId}/qr.png`, { responseType: "blob" });
+  return URL.createObjectURL(data);
+}

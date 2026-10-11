@@ -41,6 +41,8 @@ describe("login", () => {
     expect(router.state.location.pathname).toBe(path);
     expect(getToken()).toBe("jwt-token");
     expect(screen.getByText("Dana Levi")).toBeInTheDocument();
+    const navLinks = screen.queryAllByRole("link").map((link) => link.textContent);
+    expect(navLinks.includes("My tickets")).toBe(role === "USER");
   });
 
   it("shows a clear message for a wrong password", async () => {

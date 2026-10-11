@@ -50,4 +50,6 @@ export interface MyTicket extends Ticket {
   event: Pick<Event, "id" | "name" | "location" | "starts_at" | "ends_at">;
   /** Only present while the ticket is VALID (paid, not used yet). */
   qr_token: string | null;
+  /** A face is already bound to this ticket. */
+  enrolled: boolean;
 }

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.models.event import EventStatus
 from app.models.ticket import Ticket, TicketStatus
 from app.models.user import User
-from app.repositories import event_repository, ticket_repository
+from app.repositories import biometric_repository, event_repository, ticket_repository
 from app.schemas.ticket import EventSummary, MyTicketRead
 from app.services.event import EventNotFoundError
 from app.utils.qr import make_qr_png
@@ -83,6 +83,8 @@ def create_ticket(db: Session, user: User, event_id: int, now: datetime | None =
 
 def list_my_tickets(db: Session, user: User) -> list[MyTicketRead]:
     """The QR token is only revealed for VALID (paid, not yet used) tickets."""
+    tickets = ticket_repository.list_by_user(db, user.id)
+    enrolled = biometric_repository.enrolled_ticket_ids(db, [ticket.id for ticket in tickets])
     return [
         MyTicketRead(
             id=ticket.id,
@@ -92,8 +94,9 @@ def list_my_tickets(db: Session, user: User) -> list[MyTicketRead]:
             entered_at=ticket.entered_at,
             event=EventSummary.model_validate(ticket.event),
             qr_token=ticket.qr_token if ticket.status == TicketStatus.VALID else None,
+            enrolled=ticket.id in enrolled,
         )
-        for ticket in ticket_repository.list_by_user(db, user.id)
+        for ticket in tickets
     ]
 
 

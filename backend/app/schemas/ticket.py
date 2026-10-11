@@ -34,6 +34,7 @@ class EventSummary(BaseModel):
 class MyTicketRead(TicketRead):
     event: EventSummary
     qr_token: str | None
+    enrolled: bool  # a face is already bound to this ticket
 
 
 class CheckoutRead(BaseModel):

@@ -1,4 +1,6 @@
-import { Link, Outlet, type RouteObject } from "react-router";
+import { Link, NavLink, Outlet, type RouteObject } from "react-router";
+
+import type { Role } from "./api/types";
 
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
@@ -7,6 +9,16 @@ import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
 import { CheckoutCancelPage, CheckoutSuccessPage } from "./pages/user/CheckoutResultPages";
 import { EventsPage } from "./pages/user/EventsPage";
+import { MyTicketsPage } from "./pages/user/MyTicketsPage";
+
+const NAV_BY_ROLE: Record<Role, { to: string; label: string }[]> = {
+  USER: [
+    { to: "/events", label: "Events" },
+    { to: "/tickets", label: "My tickets" },
+  ],
+  GATEKEEPER: [],
+  ADMIN: [],
+};
 
 function Header() {
   const { user, logout } = useAuth();
@@ -16,6 +28,16 @@ function Header() {
         <Link to={user ? HOME_BY_ROLE[user.role] : "/"} className="text-lg font-semibold">
           BioAccess
         </Link>
+        {user &&
+          NAV_BY_ROLE[user.role].map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              className={({ isActive }) => `text-sm ${isActive ? "font-semibold text-slate-900" : "text-slate-600"}`}
+            >
+              {item.label}
+            </NavLink>
+          ))}
         <div className="ml-auto flex items-center gap-4 text-sm">
           {user ? (
             <>
@@ -89,7 +111,8 @@ export const routes: RouteObject[] = [
           { path: "events", element: <EventsPage /> },
           { path: "checkout/success", element: <CheckoutSuccessPage /> },
           { path: "checkout/cancel", element: <CheckoutCancelPage /> },
-          { path: "tickets", element: <Placeholder title="My tickets" /> },
+          { path: "tickets", element: <MyTicketsPage /> },
+          { path: "enroll/:ticketId", element: <Placeholder title="Face enrollment" /> },
         ],
       },
       {

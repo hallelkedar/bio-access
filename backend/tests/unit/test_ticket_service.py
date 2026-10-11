@@ -175,3 +175,25 @@ def test_qr_only_for_valid_tickets(
 
     with pytest.raises(ticket_service.TicketNotValidError):
         ticket_service.get_my_ticket_qr(db, user, ticket.id)
+
+
+def test_my_tickets_report_enrollment(db: Session, make_user: MakeUser, make_event: MakeEvent) -> None:
+    from datetime import UTC, datetime
+
+    from app.models.biometric_profile import BiometricProfile
+
+    user = make_user()
+    first = ticket_service.create_ticket(db, user, make_event(EventStatus.ACTIVE).id)
+    second = ticket_service.create_ticket(db, user, make_event(EventStatus.ACTIVE).id)
+    stranger_ticket = ticket_service.create_ticket(db, make_user(), make_event(EventStatus.ACTIVE).id)
+    db.add_all(
+        [
+            BiometricProfile(ticket_id=first.id, face_id="f1", collection_id="c", consent_at=datetime.now(UTC)),
+            BiometricProfile(ticket_id=stranger_ticket.id, face_id="f2", collection_id="c", consent_at=datetime.now(UTC)),
+        ]
+    )
+    db.commit()
+
+    enrolled = {ticket.id: ticket.enrolled for ticket in ticket_service.list_my_tickets(db, user)}
+
+    assert enrolled == {first.id: True, second.id: False}

@@ -39,3 +39,29 @@ class AccessLogPage(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+class EntryBucket(BaseModel):
+    bucket_start: datetime
+    approved: int
+
+
+class DecisionBreakdown(BaseModel):
+    approved: int
+    denied: int
+    denied_by_reason: dict[AccessReason, int]
+    approved_by_method: dict[AccessMethod, int]
+
+
+class Occupancy(BaseModel):
+    entered: int
+    sold: int
+    capacity: int
+    percent: float
+
+
+class EventStats(BaseModel):
+    event_id: int
+    entries_per_30_min: list[EntryBucket]
+    decisions: DecisionBreakdown
+    occupancy: Occupancy

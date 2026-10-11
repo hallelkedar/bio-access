@@ -51,3 +51,30 @@ def test_invalid_params_return_422(
 @pytest.mark.parametrize("role", [UserRole.USER, UserRole.GATEKEEPER])
 def test_only_admins(client: TestClient, make_user: MakeUser, auth_headers: Headers, role: UserRole) -> None:
     assert client.get(URL, headers=auth_headers(make_user(role))).status_code == 403
+
+
+def test_stats_endpoint(
+    client: TestClient, make_user: MakeUser, make_event: MakeEvent, auth_headers: Headers
+) -> None:
+    event = make_event(EventStatus.ACTIVE)
+
+    response = client.get(f"/api/admin/stats/{event.id}", headers=auth_headers(make_user(UserRole.ADMIN)))
+
+    assert response.status_code == 200
+    body = response.json()
+    assert set(body) == {"event_id", "entries_per_30_min", "decisions", "occupancy"}
+    assert body["decisions"]["denied_by_reason"]["NOT_RECOGNIZED"] == 0
+    assert body["occupancy"]["capacity"] == event.capacity
+
+
+def test_stats_unknown_event_404(client: TestClient, make_user: MakeUser, auth_headers: Headers) -> None:
+    assert client.get("/api/admin/stats/999999", headers=auth_headers(make_user(UserRole.ADMIN))).status_code == 404
+
+
+@pytest.mark.parametrize("role", [UserRole.USER, UserRole.GATEKEEPER])
+def test_stats_only_admins(
+    client: TestClient, make_user: MakeUser, make_event: MakeEvent, auth_headers: Headers, role: UserRole
+) -> None:
+    event = make_event(EventStatus.ACTIVE)
+
+    assert client.get(f"/api/admin/stats/{event.id}", headers=auth_headers(make_user(role))).status_code == 403

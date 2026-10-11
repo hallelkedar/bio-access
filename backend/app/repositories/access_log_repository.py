@@ -1,7 +1,9 @@
+from datetime import datetime
+
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from app.models.access_log import AccessLog
+from app.models.access_log import AccessLog, AccessMethod, AccessReason, AccessResult
 from app.models.ticket import Ticket
 from app.models.user import User
 from app.schemas.admin import AccessLogFilters
@@ -43,3 +45,28 @@ def search(db: Session, filters: AccessLogFilters) -> tuple[list[tuple[AccessLog
     )
     rows = [(log, name) for log, name in db.execute(query).all()]
     return rows, total
+
+
+def count_by_result_and_reason(db: Session, event_id: int) -> list[tuple[AccessResult, AccessReason, int]]:
+    query = (
+        select(AccessLog.result, AccessLog.reason, func.count())
+        .where(AccessLog.event_id == event_id)
+        .group_by(AccessLog.result, AccessLog.reason)
+    )
+    return [(result, reason, count) for result, reason, count in db.execute(query).all()]
+
+
+def count_approved_by_method(db: Session, event_id: int) -> list[tuple[AccessMethod, int]]:
+    query = (
+        select(AccessLog.method, func.count())
+        .where(AccessLog.event_id == event_id, AccessLog.result == AccessResult.APPROVED)
+        .group_by(AccessLog.method)
+    )
+    return [(method, count) for method, count in db.execute(query).all()]
+
+
+def approved_timestamps(db: Session, event_id: int) -> list[datetime]:
+    query = select(AccessLog.timestamp).where(
+        AccessLog.event_id == event_id, AccessLog.result == AccessResult.APPROVED
+    )
+    return list(db.scalars(query))

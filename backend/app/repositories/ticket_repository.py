@@ -56,3 +56,12 @@ def create(db: Session, ticket: Ticket) -> Ticket:
     db.add(ticket)
     db.flush()
     return ticket
+
+
+def count_by_status(db: Session, event_id: int) -> dict[TicketStatus, int]:
+    query = (
+        select(Ticket.status, func.count())
+        .where(Ticket.event_id == event_id)
+        .group_by(Ticket.status)
+    )
+    return {status: count for status, count in db.execute(query).all()}

@@ -19,8 +19,10 @@ dist/
 .env.*
 !.env.example
 
-# Local uploads (STORAGE_PROVIDER=local)
+# Local uploads (STORAGE_PROVIDER=local) and demo face provider state
 backend/media/
+backend/.demo_faces.json
+backend/.demo_faces.tmp
 
 # Local HTTPS certs (mkcert)
 *.pem

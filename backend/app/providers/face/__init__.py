@@ -2,6 +2,7 @@ from functools import lru_cache
 
 from app.core.config import get_settings
 from app.providers.face.base import FaceProvider
+from app.providers.face.demo import DemoFaceProvider
 from app.providers.face.fake import FakeFaceProvider
 from app.providers.face.rekognition import RekognitionFaceProvider
 
@@ -18,4 +19,6 @@ def get_face_provider() -> FaceProvider:
         return RekognitionFaceProvider(
             settings.aws_region, settings.aws_access_key_id, settings.aws_secret_access_key
         )
+    if settings.face_provider == "demo":
+        return DemoFaceProvider(settings.demo_faces_file)
     return FakeFaceProvider()

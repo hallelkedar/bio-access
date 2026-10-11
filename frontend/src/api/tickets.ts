@@ -1,0 +1,18 @@
+import { api } from "./client";
+import type { MyTicket, Ticket } from "./types";
+
+export async function buyTicket(eventId: number): Promise<Ticket> {
+  const { data } = await api.post<Ticket>("/api/tickets", { event_id: eventId });
+  return data;
+}
+
+/** Returns the payment provider's hosted checkout URL. */
+export async function startCheckout(ticketId: number): Promise<string> {
+  const { data } = await api.post<{ checkout_url: string }>(`/api/tickets/${ticketId}/checkout`);
+  return data.checkout_url;
+}
+
+export async function myTickets(): Promise<MyTicket[]> {
+  const { data } = await api.get<MyTicket[]>("/api/tickets/me");
+  return data;
+}

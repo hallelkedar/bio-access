@@ -5,6 +5,8 @@ import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { HOME_BY_ROLE } from "./auth/roles";
 import { LoginPage } from "./pages/LoginPage";
 import { RegisterPage } from "./pages/RegisterPage";
+import { CheckoutCancelPage, CheckoutSuccessPage } from "./pages/user/CheckoutResultPages";
+import { EventsPage } from "./pages/user/EventsPage";
 
 function Header() {
   const { user, logout } = useAuth();
@@ -83,7 +85,12 @@ export const routes: RouteObject[] = [
       { path: "register", element: <RegisterPage /> },
       {
         element: <ProtectedRoute roles={["USER"]} />,
-        children: [{ path: "events", element: <Placeholder title="Events" /> }],
+        children: [
+          { path: "events", element: <EventsPage /> },
+          { path: "checkout/success", element: <CheckoutSuccessPage /> },
+          { path: "checkout/cancel", element: <CheckoutCancelPage /> },
+          { path: "tickets", element: <Placeholder title="My tickets" /> },
+        ],
       },
       {
         element: <ProtectedRoute roles={["GATEKEEPER"]} />,

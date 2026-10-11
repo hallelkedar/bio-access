@@ -9,10 +9,14 @@ import { httpError, makeUser } from "../test/factories";
 import { getToken, setToken } from "./tokenStore";
 
 vi.mock("../api/auth");
+vi.mock("../api/events", () => ({ listEvents: vi.fn().mockResolvedValue([]) }));
+vi.mock("../api/tickets", () => ({ myTickets: vi.fn().mockResolvedValue([]) }));
 const mocked = vi.mocked(authApi);
 
 beforeEach(() => {
-  vi.resetAllMocks();
+  vi.mocked(authApi.login).mockReset();
+  vi.mocked(authApi.register).mockReset();
+  vi.mocked(authApi.fetchMe).mockReset();
 });
 
 async function fillLogin(user: ReturnType<typeof renderApp>["user"], email = "dana@example.com", password = "password123") {
@@ -23,7 +27,7 @@ async function fillLogin(user: ReturnType<typeof renderApp>["user"], email = "da
 
 describe("login", () => {
   it.each([
-    ["USER", "/events", "Events"],
+    ["USER", "/events", "Events"],  // the catalog page (empty here)
     ["GATEKEEPER", "/gate", "Gate terminal"],
     ["ADMIN", "/admin", "Admin dashboard"],
   ] as const)("a %s lands on %s", async (role, path, heading) => {

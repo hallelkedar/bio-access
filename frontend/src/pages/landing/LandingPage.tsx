@@ -7,6 +7,7 @@ import { ButtonLink, CountUp, Reveal } from "../../components/ui";
 import type { TranslationKey } from "../../i18n/en";
 import { useLanguage } from "../../i18n/LanguageProvider";
 import { FaceScan } from "./FaceScan";
+import { GateDemo } from "./GateDemo";
 
 type Cta = { to: string; labelKey: TranslationKey };
 
@@ -102,6 +103,8 @@ export function LandingPage() {
           ))}
         </ol>
       </section>
+
+      <GateDemo />
 
       <section className="rounded-card border border-border bg-surface px-6 py-10 shadow-card" aria-labelledby="stats-title">
         <h2 id="stats-title" className="text-center text-2xl font-bold tracking-tight">{t("landing.statsTitle")}</h2>

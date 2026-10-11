@@ -8,6 +8,7 @@ import { Camera } from "../../components/Camera";
 import { ErrorBox } from "../../components/ErrorBox";
 import { FormField } from "../../components/FormField";
 import { Spinner } from "../../components/Spinner";
+import { GateResult } from "../../gate/GateResult";
 import { loadGateSetup, saveGateSetup, type GateSetup } from "../../gate/gateSetup";
 import { denialText, hintText } from "../../gate/messages";
 import { grayThumbnail } from "../../gate/motion";
@@ -132,9 +133,7 @@ function ResultOverlay({ decision }: { decision: GateDecision }) {
   const { t, lang } = useLanguage();
   return (
     <div role="alert" className={`fixed inset-0 z-50 flex flex-col items-center justify-center text-white ${approved ? "bg-emerald-600" : "bg-red-600"}`}>
-      <p className="text-7xl font-black">{approved ? "✓" : "✕"}</p>
-      <p className="mt-4 text-5xl font-bold">{approved ? t("gate.welcome") : denialText(lang, decision.reason)}</p>
-      {decision.user_name && <p className="mt-3 text-3xl">{decision.user_name}</p>}
+      <GateResult approved={approved} message={approved ? t("gate.welcome") : denialText(lang, decision.reason)} name={decision.user_name} />
     </div>
   );
 }

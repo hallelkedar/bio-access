@@ -365,6 +365,17 @@ export const en = {
   "landing.stat.photos": "photos stored by us",
   "landing.stat.entries": "entry per ticket, even at 10 gates at once",
   "landing.stat.cases": "security scenarios tested",
+  "landing.demo.title": "See the gate in action",
+  "landing.demo.subtitle": "A simulation of the gate terminal. No camera and no real data.",
+  "landing.demo.badge": "Simulation",
+  "landing.demo.gate": "Gate north-1",
+  "landing.demo.watching": "Waiting for someone to step in",
+  "landing.demo.scanning": "Scanning…",
+  "landing.demo.verifying": "Verifying…",
+  "landing.demo.approved": "Entry approved",
+  "landing.demo.denied": "Entry denied",
+  "landing.demo.name": "Noa Cohen",
+  "landing.demo.tryReal": "Try the real gate",
   "landing.footer": "BioAccess · academic project",
 } as const;
 

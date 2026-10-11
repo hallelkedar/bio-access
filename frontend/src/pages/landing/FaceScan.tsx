@@ -1,8 +1,9 @@
 /**
  * Pure-CSS "face being scanned" visual: face outline, corner brackets, a moving scan line
  * and a soft pulse. Decorative; frozen by the global reduced-motion rule.
+ * `scanning={false}` hides the scan line (e.g. while the gate demo is idle).
  */
-export function FaceScan({ label }: { label: string }) {
+export function FaceScan({ label, scanning = true }: { label: string; scanning?: boolean }) {
   return (
     <div role="img" aria-label={label} className="relative mx-auto aspect-[5/6] w-56 sm:w-64">
       <div className="absolute inset-6 animate-pulse-ring rounded-[45%] border-2 border-accent-400/40" aria-hidden="true" />
@@ -16,7 +17,7 @@ export function FaceScan({ label }: { label: string }) {
           <path d="M100 112v18l-6 6M88 150c8 6 16 6 24 0" />
         </g>
       </svg>
-      <div className="pointer-events-none absolute inset-x-6 h-0.5 animate-scan-line rounded-full bg-gradient-to-r from-transparent via-accent-300 to-transparent shadow-[0_0_14px_3px_rgb(103_232_249_/_0.55)]" style={{ top: "50%" }} aria-hidden="true" />
+      {scanning && <div className="pointer-events-none absolute inset-x-6 h-0.5 animate-scan-line rounded-full bg-gradient-to-r from-transparent via-accent-300 to-transparent shadow-[0_0_14px_3px_rgb(103_232_249_/_0.55)]" style={{ top: "50%" }} aria-hidden="true" />}
     </div>
   );
 }

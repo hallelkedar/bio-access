@@ -141,9 +141,35 @@ describe("checkout return pages", () => {
   it("success gives up politely when the webhook is slow", async () => {
     tickets.myTickets.mockResolvedValue([makeTicket("PENDING_PAYMENT")]);
 
-    renderPage(<CheckoutSuccessPage pollMs={5} maxWaitMs={30} />, "/checkout/success?ticket_id=42");
+    renderPage(<CheckoutSuccessPage pollMs={5} maxWaitMs={30} refreshAtMs={[]} />, "/checkout/success?ticket_id=42");
 
     expect(await screen.findByRole("heading", { name: "Payment is being processed" })).toBeInTheDocument();
+    expect(tickets.refreshPayment).not.toHaveBeenCalled();
+  });
+
+  it("asks the provider directly when the webhook is late", async () => {
+    tickets.myTickets.mockResolvedValue([makeTicket("PENDING_PAYMENT")]);
+    tickets.refreshPayment.mockResolvedValue("VALID");
+
+    renderPage(<CheckoutSuccessPage pollMs={5} maxWaitMs={5000} refreshAtMs={[20]} />, "/checkout/success?ticket_id=42");
+
+    expect(await screen.findByRole("heading", { name: "Payment received!" })).toBeInTheDocument();
+    expect(tickets.refreshPayment).toHaveBeenCalledTimes(1);
+    expect(tickets.refreshPayment).toHaveBeenCalledWith(42);
+  });
+
+  it("keeps polling when the provider says not paid yet, and check again retries", async () => {
+    tickets.myTickets.mockResolvedValue([makeTicket("PENDING_PAYMENT")]);
+    tickets.refreshPayment.mockResolvedValueOnce("PENDING_PAYMENT").mockResolvedValueOnce("VALID");
+    const user = renderPage(
+      <CheckoutSuccessPage pollMs={5} maxWaitMs={60} refreshAtMs={[10]} />,
+      "/checkout/success?ticket_id=42",
+    );
+
+    await user.click(await screen.findByRole("button", { name: "Check again" }));
+
+    expect(await screen.findByRole("heading", { name: "Payment received!" })).toBeInTheDocument();
+    expect(tickets.refreshPayment).toHaveBeenCalledTimes(2);
   });
 
   it("cancel page can retry checkout", async () => {

@@ -30,3 +30,13 @@ def has_open_payment(db: Session, ticket_id: int, exclude_payment_id: int) -> bo
         Payment.status == PaymentStatus.CREATED,
     )
     return db.scalars(query).first() is not None
+
+
+def list_open_for_ticket(db: Session, ticket_id: int) -> list[Payment]:
+    """Checkouts of this ticket still waiting for a result, newest first."""
+    query = (
+        select(Payment)
+        .where(Payment.ticket_id == ticket_id, Payment.status == PaymentStatus.CREATED)
+        .order_by(Payment.id.desc())
+    )
+    return list(db.scalars(query))

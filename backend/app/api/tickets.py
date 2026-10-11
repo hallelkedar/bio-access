@@ -1,12 +1,18 @@
-from fastapi import APIRouter, Depends, HTTPException, Response, status
+from collections.abc import Callable
+
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Request, Response, status
 from sqlalchemy.orm import Session
 
 from app.core.deps import require_role
-from app.db.session import get_db
+from app.core.rate_limit import PAYMENT_REFRESH_LIMIT, limiter, user_key
+from app.db.session import get_db, get_session_factory
 from app.models.user import User, UserRole
 from app.providers.payment import get_payment_provider
-from app.providers.payment.base import PaymentProvider
-from app.schemas.ticket import CheckoutRead, MyTicketRead, TicketCreate, TicketRead
+from app.providers.notify import get_notifier
+from app.providers.notify.base import Notifier
+from app.providers.payment.base import PaymentProvider, PaymentProviderError
+from app.schemas.ticket import CheckoutRead, MyTicketRead, PaymentRefreshRead, TicketCreate, TicketRead
+from app.services import notification as notification_service
 from app.services import payment as payment_service
 from app.services import ticket as ticket_service
 from app.services.event import EventNotFoundError
@@ -72,3 +78,27 @@ def ticket_qr(
         raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="ticket is not valid")
     # The QR is an entry credential: don't let browsers or proxies keep a copy.
     return Response(content=png, media_type="image/png", headers={"Cache-Control": "no-store"})
+
+
+@router.post("/{ticket_id}/payment/refresh", response_model=PaymentRefreshRead)
+@limiter.limit(PAYMENT_REFRESH_LIMIT, key_func=user_key)
+def refresh_payment(
+    request: Request,
+    ticket_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user),
+    provider: PaymentProvider = Depends(get_payment_provider),
+    notifier: Notifier = Depends(get_notifier),
+    session_factory: Callable[[], Session] = Depends(get_session_factory),
+) -> PaymentRefreshRead:
+    """Back-up for a missing webhook: ask the payment provider directly whether this ticket was paid."""
+    try:
+        ticket_status, activated = payment_service.refresh_payment(db, provider, user, ticket_id)
+    except payment_service.TicketNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ticket not found")
+    except PaymentProviderError:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="payment provider unavailable")
+    if activated is not None:
+        background_tasks.add_task(notification_service.notify_ticket_paid, session_factory, notifier, activated)
+    return PaymentRefreshRead(status=ticket_status)

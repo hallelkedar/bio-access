@@ -39,3 +39,7 @@ class MyTicketRead(TicketRead):
 
 class CheckoutRead(BaseModel):
     checkout_url: str
+
+
+class PaymentRefreshRead(BaseModel):
+    status: TicketStatus

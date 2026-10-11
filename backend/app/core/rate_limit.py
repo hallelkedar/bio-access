@@ -13,8 +13,8 @@ from app.core.security import InvalidTokenError, decode_access_token
 limiter = Limiter(key_func=get_remote_address)
 
 
-def gatekeeper_key(request: Request) -> str:
-    """Rate-limit gates per gatekeeper account: gates on one venue Wi-Fi share an IP."""
+def user_key(request: Request) -> str:
+    """Rate-limit per account (from the JWT), e.g. gates on one venue Wi-Fi share an IP."""
     header = request.headers.get("authorization", "")
     if header.lower().startswith("bearer "):
         try:
@@ -30,6 +30,9 @@ def auth_limit() -> str:
 
 def gate_limit() -> str:
     return get_settings().gate_rate_limit
+
+
+PAYMENT_REFRESH_LIMIT = "10/minute"  # each call may query the payment provider
 
 
 def rate_limit_exceeded_handler(request: Request, exc: Exception) -> JSONResponse:

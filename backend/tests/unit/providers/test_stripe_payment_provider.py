@@ -114,3 +114,30 @@ def test_missing_webhook_secret_rejected() -> None:
 
     with pytest.raises(InvalidWebhookError):
         StripePaymentProvider("sk_test_dummy").parse_webhook(payload, headers)
+
+
+@pytest.mark.parametrize(
+    ("payment_status", "status", "expected"),
+    [("paid", "complete", "PAID"), ("unpaid", "open", "OPEN"), ("unpaid", "expired", "EXPIRED")],
+)
+def test_session_status_mapping(payment_status: str, status: str, expected: str) -> None:
+    provider = _provider()
+    provider._client = MagicMock()
+    provider._client.v1.checkout.sessions.retrieve.return_value = SimpleNamespace(
+        payment_status=payment_status, status=status
+    )
+
+    assert provider.get_session_status("cs_1").value == expected
+
+
+def test_session_status_stripe_error() -> None:
+    import stripe
+
+    from app.providers.payment.base import PaymentProviderError
+
+    provider = _provider()
+    provider._client = MagicMock()
+    provider._client.v1.checkout.sessions.retrieve.side_effect = stripe.APIConnectionError("no network")
+
+    with pytest.raises(PaymentProviderError, match="APIConnectionError"):
+        provider.get_session_status("cs_1")

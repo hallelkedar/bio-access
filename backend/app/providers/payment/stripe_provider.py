@@ -6,6 +6,8 @@ from app.providers.payment.base import (
     CheckoutSession,
     InvalidWebhookError,
     PaymentProvider,
+    PaymentProviderError,
+    SessionStatus,
     WebhookEvent,
     WebhookEventType,
 )
@@ -79,3 +81,14 @@ class StripePaymentProvider(PaymentProvider):
         else:
             return None
         return WebhookEvent(event_id=event.id, type=event_type, session_id=session.id)
+
+    def get_session_status(self, session_id: str) -> SessionStatus:
+        try:
+            session = self._client.v1.checkout.sessions.retrieve(session_id)
+        except stripe.StripeError as exc:
+            raise PaymentProviderError(f"stripe: {type(exc).__name__}") from None
+        if session.payment_status == "paid":
+            return SessionStatus.PAID
+        if session.status == "expired":
+            return SessionStatus.EXPIRED
+        return SessionStatus.OPEN

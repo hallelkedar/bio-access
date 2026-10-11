@@ -8,6 +8,8 @@ from app.providers.payment.base import (
     CheckoutSession,
     InvalidWebhookError,
     PaymentProvider,
+    PaymentProviderError,
+    SessionStatus,
     WebhookEvent,
     WebhookEventType,
 )
@@ -30,6 +32,7 @@ class FakePaymentProvider(PaymentProvider):
     ) -> None:
         self._secret = webhook_secret.encode("utf-8")
         self._base_url = base_url
+        self._sessions: dict[str, SessionStatus] = {}
 
     def create_checkout(
         self,
@@ -42,6 +45,7 @@ class FakePaymentProvider(PaymentProvider):
         cancel_url: str,
     ) -> CheckoutSession:
         session_id = f"fake_cs_{secrets.token_hex(12)}"
+        self._sessions[session_id] = SessionStatus.OPEN
         return CheckoutSession(session_id=session_id, url=f"{self._base_url}/checkout/{session_id}")
 
     def sign(self, payload: bytes) -> str:
@@ -71,3 +75,17 @@ class FakePaymentProvider(PaymentProvider):
             return WebhookEvent(event_id=body["id"], type=event_type, session_id=body["session_id"])
         except (ValueError, KeyError, TypeError) as exc:
             raise InvalidWebhookError("malformed payload") from exc
+
+    # --- reconciliation -----------------------------------------------------------
+    def mark_paid(self, session_id: str) -> None:
+        """Test control: the user paid, but (maybe) no webhook was delivered."""
+        self._sessions[session_id] = SessionStatus.PAID
+
+    def mark_expired(self, session_id: str) -> None:
+        self._sessions[session_id] = SessionStatus.EXPIRED
+
+    def get_session_status(self, session_id: str) -> SessionStatus:
+        status = self._sessions.get(session_id)
+        if status is None:
+            raise PaymentProviderError(f"unknown session {session_id}")
+        return status

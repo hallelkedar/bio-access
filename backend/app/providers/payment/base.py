@@ -24,6 +24,16 @@ class WebhookEvent:
     session_id: str
 
 
+class SessionStatus(str, enum.Enum):
+    PAID = "PAID"
+    OPEN = "OPEN"  # not paid (yet)
+    EXPIRED = "EXPIRED"
+
+
+class PaymentProviderError(Exception):
+    """The provider couldn't be reached or refused the request."""
+
+
 class InvalidWebhookError(Exception):
     """Bad signature or malformed payload."""
 
@@ -50,4 +60,11 @@ class PaymentProvider(ABC):
 
         Returns None for event types we don't handle.
         Raises InvalidWebhookError if the signature or payload is invalid.
+        """
+
+    @abstractmethod
+    def get_session_status(self, session_id: str) -> SessionStatus:
+        """Ask the provider directly whether a checkout was paid (when a webhook went missing).
+
+        Raises PaymentProviderError if the provider can't answer.
         """

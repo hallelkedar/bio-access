@@ -28,9 +28,16 @@ def get_by_id(db: Session, ticket_id: int) -> Ticket | None:
     return db.get(Ticket, ticket_id)
 
 
+def get_by_qr_token(db: Session, qr_token: str) -> Ticket | None:
+    return db.scalars(select(Ticket).where(Ticket.qr_token == qr_token)).first()
+
+
 def get_by_id_for_update(db: Session, ticket_id: int) -> Ticket | None:
     """Load the ticket and lock its row until the transaction ends (SELECT ... FOR UPDATE)."""
-    return db.scalars(select(Ticket).where(Ticket.id == ticket_id).with_for_update()).first()
+    # populate_existing: refresh an object already in the session with the locked row's values.
+    # Without it, a ticket loaded earlier (e.g. by QR token) keeps a stale status.
+    query = select(Ticket).where(Ticket.id == ticket_id).with_for_update()
+    return db.scalars(query.execution_options(populate_existing=True)).first()
 
 
 def list_by_user(db: Session, user_id: int) -> list[Ticket]:

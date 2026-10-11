@@ -39,8 +39,12 @@ def _unlocked_slow_read(db: Session, ticket_id: int) -> Ticket | None:
     return ticket
 
 
-def run_gate_race(engine: Engine, use_lock: bool = True) -> tuple[Counter[str], TicketStatus, int]:
+def run_gate_race(
+    engine: Engine, use_lock: bool = True, mixed: bool = False
+) -> tuple[Counter[str], TicketStatus, int]:
     """Scan one enrolled ticket at GATES gates at the same moment.
+
+    mixed=True: odd gates scan the QR code instead of the face.
 
     Returns (decisions by reason, final ticket status, number of access-log rows).
     Everything it creates is deleted afterwards.
@@ -63,7 +67,8 @@ def run_gate_race(engine: Engine, use_lock: bool = True) -> tuple[Counter[str], 
         )
         setup.add(event)
         setup.flush()
-        ticket = Ticket(event_id=event.id, user_id=holder.id, qr_token=uuid.uuid4().hex, status=TicketStatus.VALID)
+        qr_token = uuid.uuid4().hex
+        ticket = Ticket(event_id=event.id, user_id=holder.id, qr_token=qr_token, status=TicketStatus.VALID)
         setup.add(ticket)
         setup.commit()
         event_id, ticket_id, user_ids = event.id, ticket.id, [admin.id, holder.id]
@@ -76,7 +81,10 @@ def run_gate_race(engine: Engine, use_lock: bool = True) -> tuple[Counter[str], 
     def scan(gate: int) -> str:
         with Session(engine) as session:
             start.wait()  # every gate scans at the same moment
-            decision = access_control.verify_face(session, faces, event_id, f"gate-{gate}", FACE, MB)
+            if mixed and gate % 2:
+                decision = access_control.verify_qr(session, event_id, f"gate-{gate}", qr_token)
+            else:
+                decision = access_control.verify_face(session, faces, event_id, f"gate-{gate}", FACE, MB)
             return decision.reason.value if decision.result == AccessResult.DENIED else "APPROVED"
 
     try:
@@ -108,6 +116,15 @@ def test_parallel_scans_admit_exactly_once(engine: Engine) -> None:
     assert results[AccessReason.ALREADY_ENTERED.value] == GATES - 1
     assert status == TicketStatus.ENTERED
     assert log_count == GATES  # every attempt logged
+
+
+def test_parallel_face_and_qr_scans_admit_exactly_once(engine: Engine) -> None:
+    results, status, log_count = run_gate_race(engine, use_lock=True, mixed=True)
+
+    assert results["APPROVED"] == 1
+    assert results[AccessReason.ALREADY_ENTERED.value] == GATES - 1
+    assert status == TicketStatus.ENTERED
+    assert log_count == GATES
 
 
 if __name__ == "__main__":

@@ -77,6 +77,25 @@ def verify_face(
     return attempt_entry(db, event_id, match.ticket_id, gate_id, AccessMethod.FACE, match.similarity, now)
 
 
+def verify_qr(
+    db: Session, event_id: int, gate_id: str, qr_token: str, now: datetime | None = None
+) -> GateVerifyResult:
+    """QR fallback: find the ticket by its token, then the same atomic entry as face.
+
+    One shared anti-passback: a ticket that entered by face can't enter again by QR.
+    The token is never logged. Raises EventNotFoundError for an unknown event id.
+    """
+    now = now or datetime.now(UTC)
+    event = event_service.get_event(db, event_id)  # raises EventNotFoundError
+    if not event_open_for_entry(event, now):
+        return _log_denial(db, event_id, gate_id, AccessMethod.QR, _denied(AccessReason.EVENT_NOT_ACTIVE), now)
+
+    ticket = ticket_repository.get_by_qr_token(db, qr_token)
+    if ticket is None:
+        return _log_denial(db, event_id, gate_id, AccessMethod.QR, _denied(AccessReason.NOT_RECOGNIZED), now)
+    return attempt_entry(db, event_id, ticket.id, gate_id, AccessMethod.QR, now=now)
+
+
 def attempt_entry(
     db: Session,
     event_id: int,

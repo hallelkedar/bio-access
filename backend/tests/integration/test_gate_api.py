@@ -151,3 +151,62 @@ def test_second_scan_returns_already_entered(
     response = _verify(client, event.id, headers)
 
     assert response.json()["reason"] == "ALREADY_ENTERED"
+
+
+QR_URL = "/api/gate/verify-qr"
+
+
+def test_qr_fallback_approves(
+    client: TestClient, setup: tuple[Event, Ticket, User], make_user: MakeUser, auth_headers: Headers
+) -> None:
+    event, ticket, user = setup
+
+    response = client.post(
+        QR_URL,
+        json={"event_id": event.id, "gate_id": "north-1", "qr_token": ticket.qr_token},
+        headers=auth_headers(make_user(UserRole.GATEKEEPER)),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["result"] == "APPROVED"
+    assert response.json()["user_name"] == user.full_name
+
+
+def test_qr_unknown_event_returns_404(client: TestClient, make_user: MakeUser, auth_headers: Headers) -> None:
+    response = client.post(
+        QR_URL,
+        json={"event_id": 999_999, "gate_id": "north-1", "qr_token": "x"},
+        headers=auth_headers(make_user(UserRole.GATEKEEPER)),
+    )
+
+    assert response.status_code == 404
+
+
+@pytest.mark.parametrize("token", ["", "x" * 65])
+def test_qr_token_length_validated(
+    client: TestClient, setup: tuple[Event, Ticket, User], make_user: MakeUser, auth_headers: Headers, token: str
+) -> None:
+    event, _, _ = setup
+
+    response = client.post(
+        QR_URL,
+        json={"event_id": event.id, "gate_id": "north-1", "qr_token": token},
+        headers=auth_headers(make_user(UserRole.GATEKEEPER)),
+    )
+
+    assert response.status_code == 422
+
+
+@pytest.mark.parametrize("role", [UserRole.USER, UserRole.ADMIN])
+def test_qr_only_gatekeepers(
+    client: TestClient, setup: tuple[Event, Ticket, User], make_user: MakeUser, auth_headers: Headers, role: UserRole
+) -> None:
+    event, ticket, _ = setup
+
+    response = client.post(
+        QR_URL,
+        json={"event_id": event.id, "gate_id": "north-1", "qr_token": ticket.qr_token},
+        headers=auth_headers(make_user(role)),
+    )
+
+    assert response.status_code == 403

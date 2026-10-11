@@ -9,7 +9,7 @@ from app.db.session import get_db
 from app.models.user import User, UserRole
 from app.providers.face import get_face_provider
 from app.providers.face.base import FaceProvider
-from app.schemas.gate import GateVerifyResult
+from app.schemas.gate import GateQrVerify, GateVerifyResult
 from app.services import access_control
 from app.services.event import EventNotFoundError
 from app.utils.image_validation import ImageTooLargeError
@@ -44,3 +44,16 @@ async def verify(
         raise too_large()
     finally:
         del image
+
+
+@router.post("/verify-qr", response_model=GateVerifyResult)
+def verify_qr(
+    data: GateQrVerify,
+    db: Session = Depends(get_db),
+    _: User = Depends(require_gatekeeper),
+) -> GateVerifyResult:
+    """Fallback when face recognition fails. Compare user_name with the guest's ID."""
+    try:
+        return access_control.verify_qr(db, data.event_id, data.gate_id, data.qr_token)
+    except EventNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="event not found")

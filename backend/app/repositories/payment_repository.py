@@ -12,7 +12,13 @@ def create(db: Session, payment: Payment) -> Payment:
 
 def get_by_session_id_for_update(db: Session, provider_session_id: str) -> Payment | None:
     """Load the payment and lock its row so concurrent webhooks for one session run in turn."""
-    query = select(Payment).where(Payment.provider_session_id == provider_session_id).with_for_update()
+    # populate_existing: refresh an object already in the session with the locked row's values.
+    query = (
+        select(Payment)
+        .where(Payment.provider_session_id == provider_session_id)
+        .with_for_update()
+        .execution_options(populate_existing=True)
+    )
     return db.scalars(query).first()
 
 

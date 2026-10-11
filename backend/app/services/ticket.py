@@ -9,6 +9,7 @@ from app.models.user import User
 from app.repositories import event_repository, ticket_repository
 from app.schemas.ticket import EventSummary, MyTicketRead
 from app.services.event import EventNotFoundError
+from app.utils.qr import make_qr_png
 
 
 class EventEndedError(Exception):
@@ -20,6 +21,14 @@ class TicketAlreadyExistsError(Exception):
 
 
 class SoldOutError(Exception):
+    pass
+
+
+class TicketNotFoundError(Exception):
+    pass
+
+
+class TicketNotValidError(Exception):
     pass
 
 
@@ -86,3 +95,13 @@ def list_my_tickets(db: Session, user: User) -> list[MyTicketRead]:
         )
         for ticket in ticket_repository.list_by_user(db, user.id)
     ]
+
+
+def get_my_ticket_qr(db: Session, user: User, ticket_id: int) -> bytes:
+    """QR PNG of the ticket's token; only the owner gets it, and only while the ticket is VALID."""
+    ticket = ticket_repository.get_by_id(db, ticket_id)
+    if ticket is None or ticket.user_id != user.id:
+        raise TicketNotFoundError(ticket_id)
+    if ticket.status != TicketStatus.VALID:
+        raise TicketNotValidError(ticket_id)
+    return make_qr_png(ticket.qr_token)

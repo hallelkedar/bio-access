@@ -142,3 +142,36 @@ def test_qr_token_only_for_valid_tickets(
 
     assert mine.status == status
     assert (mine.qr_token == ticket.qr_token) if shows_qr else (mine.qr_token is None)
+
+
+def test_qr_for_valid_ticket(db: Session, make_user: MakeUser, make_event: MakeEvent) -> None:
+    user = make_user()
+    ticket = ticket_service.create_ticket(db, user, make_event(EventStatus.ACTIVE).id)
+    ticket.status = TicketStatus.VALID
+    db.commit()
+
+    png = ticket_service.get_my_ticket_qr(db, user, ticket.id)
+
+    assert png.startswith(b"\x89PNG")
+
+
+def test_qr_of_other_users_ticket_not_found(db: Session, make_user: MakeUser, make_event: MakeEvent) -> None:
+    ticket = ticket_service.create_ticket(db, make_user(), make_event(EventStatus.ACTIVE).id)
+    ticket.status = TicketStatus.VALID
+    db.commit()
+
+    with pytest.raises(ticket_service.TicketNotFoundError):
+        ticket_service.get_my_ticket_qr(db, make_user(), ticket.id)
+
+
+@pytest.mark.parametrize("status", [TicketStatus.PENDING_PAYMENT, TicketStatus.ENTERED, TicketStatus.CANCELLED])
+def test_qr_only_for_valid_tickets(
+    db: Session, make_user: MakeUser, make_event: MakeEvent, status: TicketStatus
+) -> None:
+    user = make_user()
+    ticket = ticket_service.create_ticket(db, user, make_event(EventStatus.ACTIVE).id)
+    ticket.status = status
+    db.commit()
+
+    with pytest.raises(ticket_service.TicketNotValidError):
+        ticket_service.get_my_ticket_qr(db, user, ticket.id)

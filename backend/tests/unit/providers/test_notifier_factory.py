@@ -7,6 +7,7 @@ from app.providers import notify as notify_providers
 from app.providers.notify.base import CompositeNotifier
 from app.providers.notify.console import ConsoleNotifier
 from app.providers.notify.email_resend import ResendEmailSender
+from app.providers.notify.sms_twilio import TwilioSmsSender
 
 
 @pytest.fixture(autouse=True)
@@ -45,4 +46,33 @@ def test_resend_without_key_fails_fast(monkeypatch: pytest.MonkeyPatch) -> None:
     _use_settings(monkeypatch, email_provider="resend", resend_api_key=None)
 
     with pytest.raises(RuntimeError, match="RESEND_API_KEY"):
+        notify_providers.get_notifier()
+
+
+def test_twilio_sms(monkeypatch: pytest.MonkeyPatch) -> None:
+    _use_settings(
+        monkeypatch,
+        email_provider="console",
+        sms_provider="twilio",
+        twilio_account_sid="ACtest",
+        twilio_auth_token="token",
+        twilio_from="+15005550006",
+    )
+
+    notifier = notify_providers.get_notifier()
+
+    assert isinstance(notifier, CompositeNotifier)
+    assert isinstance(notifier.sms, TwilioSmsSender)
+
+
+def test_twilio_missing_setting_fails_fast(monkeypatch: pytest.MonkeyPatch) -> None:
+    _use_settings(
+        monkeypatch,
+        sms_provider="twilio",
+        twilio_account_sid="ACtest",
+        twilio_auth_token="token",
+        twilio_from=None,
+    )
+
+    with pytest.raises(RuntimeError, match="TWILIO_FROM"):
         notify_providers.get_notifier()

@@ -4,6 +4,7 @@ from app.core.config import get_settings
 from app.providers.notify.base import CompositeNotifier, EmailSender, Notifier, SmsSender
 from app.providers.notify.console import ConsoleNotifier
 from app.providers.notify.email_resend import ResendEmailSender
+from app.providers.notify.sms_twilio import TwilioSmsSender
 
 
 @lru_cache
@@ -21,7 +22,17 @@ def get_notifier() -> Notifier:
 
     sms: SmsSender
     if settings.sms_provider == "twilio":
-        raise NotImplementedError("SMS_PROVIDER=twilio is not implemented yet")
-    sms = ConsoleNotifier()
+        sid, token, sender = (
+            settings.twilio_account_sid,
+            settings.twilio_auth_token,
+            settings.twilio_from,
+        )
+        if not (sid and token and sender):
+            raise RuntimeError(
+                "SMS_PROVIDER=twilio requires TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN and TWILIO_FROM in .env"
+            )
+        sms = TwilioSmsSender(sid, token, sender)
+    else:
+        sms = ConsoleNotifier()
 
     return CompositeNotifier(email=email, sms=sms)

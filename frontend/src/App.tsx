@@ -5,6 +5,7 @@ import type { Role } from "./api/types";
 import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { HOME_BY_ROLE } from "./auth/roles";
+import { LanguageProvider } from "./i18n/LanguageProvider";
 import { AdminLayout } from "./pages/admin/AdminLayout";
 import { DashboardPage } from "./pages/admin/DashboardPage";
 import { EventsAdminPage } from "./pages/admin/EventsAdminPage";
@@ -70,14 +71,16 @@ function Header() {
 
 function RootLayout() {
   return (
-    <AuthProvider>
-      <div className="min-h-screen bg-slate-50 text-slate-900">
-        <Header />
-        <main className="mx-auto max-w-5xl px-4 py-8">
-          <Outlet />
-        </main>
-      </div>
-    </AuthProvider>
+    <LanguageProvider>
+      <AuthProvider>
+        <div className="min-h-screen bg-slate-50 text-slate-900">
+          <Header />
+          <main className="mx-auto max-w-5xl px-4 py-8">
+            <Outlet />
+          </main>
+        </div>
+      </AuthProvider>
+    </LanguageProvider>
   );
 }
 

@@ -10,7 +10,10 @@ import { Camera } from "../../components/Camera";
 import { ErrorBox } from "../../components/ErrorBox";
 import { Spinner } from "../../components/Spinner";
 import { useCamera } from "../../hooks/useCamera";
+import { useLanguage } from "../../i18n/LanguageProvider";
+import { translate, type Lang } from "../../i18n/translate";
 
+/** English tips (kept for compatibility); the page shows qualityTip() in the current language. */
 export const QUALITY_TIPS: Record<QualityIssue, string> = {
   NO_FACE: "We couldn't see a face. Center your face in the oval.",
   MULTIPLE_FACES: "Only one person should be in the picture.",
@@ -36,7 +39,12 @@ function qualityIssues(error: unknown): QualityIssue[] | null {
   return Array.isArray(issues) ? (issues as QualityIssue[]) : null;
 }
 
+export function qualityTip(lang: Lang, issue: QualityIssue): string {
+  return translate(lang, `quality.${issue}`);
+}
+
 export function EnrollPage() {
+  const { t, lang } = useLanguage();
   const ticketId = Number(useParams().ticketId);
   const [ticket, setTicket] = useState<MyTicket | null>(null);
   const [step, setStep] = useState<Step>({ name: "checking" });
@@ -48,16 +56,16 @@ export function EnrollPage() {
         if (!active) return;
         const found = tickets.find((t) => t.id === ticketId);
         setTicket(found ?? null);
-        if (!found) setStep({ name: "blocked", message: "Ticket not found." });
-        else if (found.enrolled) setStep({ name: "blocked", message: "Face entry is already set up for this ticket ✓" });
-        else if (found.status !== "VALID") setStep({ name: "blocked", message: "Only paid, unused tickets can be enrolled." });
+        if (!found) setStep({ name: "blocked", message: t("enroll.ticketNotFound") });
+        else if (found.enrolled) setStep({ name: "blocked", message: t("enroll.alreadySetUp") });
+        else if (found.status !== "VALID") setStep({ name: "blocked", message: t("enroll.onlyValid") });
         else setStep({ name: "consent" });
       })
-      .catch((err) => active && setStep({ name: "blocked", message: apiErrorMessage(err) }));
+      .catch((err) => active && setStep({ name: "blocked", message: apiErrorMessage(err, {}, lang) }));
     return () => {
       active = false;
     };
-  }, [ticketId]);
+  }, [ticketId]); // loaded once per ticket; messages use the language of that moment
 
   async function upload(photo: Blob) {
     setStep({ name: "uploading", photo });
@@ -67,13 +75,11 @@ export function EnrollPage() {
     } catch (err) {
       const issues = qualityIssues(err);
       if (issues) {
-        setStep({ name: "camera", tips: issues.map((issue) => QUALITY_TIPS[issue] ?? "Please try another photo."), error: null });
+        setStep({ name: "camera", tips: issues.map((issue) => (issue in QUALITY_TIPS ? qualityTip(lang, issue) : t("enroll.anotherPhoto"))), error: null });
       } else if (err instanceof AxiosError && err.response?.status === 409) {
-        setStep({ name: "blocked", message: apiErrorMessage(err) });
+        setStep({ name: "blocked", message: apiErrorMessage(err, {}, lang) });
       } else {
-        const message = apiErrorMessage(err, {
-          503: "The face service is unavailable. Try again in a few minutes (your QR code still works).",
-        });
+        const message = apiErrorMessage(err, { 503: t("enroll.faceServiceDown") }, lang);
         setStep({ name: "camera", tips: [], error: message });
       }
     }
@@ -81,7 +87,7 @@ export function EnrollPage() {
 
   return (
     <section className="mx-auto max-w-2xl">
-      <h1 className="text-2xl font-bold">Face entry</h1>
+      <h1 className="text-2xl font-bold">{t("enroll.title")}</h1>
       {ticket && <p className="mt-1 text-slate-600">{ticket.event.name}</p>}
       <div className="mt-6">
         {step.name === "checking" && <Spinner />}
@@ -105,38 +111,41 @@ export function EnrollPage() {
 }
 
 function Blocked({ message }: { message: string }) {
+  const { t } = useLanguage();
   return (
     <div className="space-y-4">
       <p>{message}</p>
-      <Link to="/tickets" className="text-blue-700 underline">Back to my tickets</Link>
+      <Link to="/tickets" className="text-blue-700 underline">{t("enroll.backToTickets")}</Link>
     </div>
   );
 }
 
 function Consent({ onAccept }: { onAccept: () => void }) {
+  const { t } = useLanguage();
   const [agreed, setAgreed] = useState(false);
   return (
     <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-5">
-      <h2 className="text-lg font-semibold">Before we start</h2>
-      <ul className="list-disc space-y-1 pl-5 text-sm text-slate-700">
-        <li>Your photo is sent securely to our face-recognition provider (AWS) to create a face reference.</li>
-        <li>We never store the photo itself.</li>
-        <li>The face reference is linked only to this ticket and is deleted after the event.</li>
-        <li>You can always enter with your QR code instead.</li>
+      <h2 className="text-lg font-semibold">{t("enroll.consentTitle")}</h2>
+      <ul className="list-disc space-y-1 ps-5 text-sm text-slate-700">
+        <li>{t("enroll.consentSent")}</li>
+        <li>{t("enroll.consentNotStored")}</li>
+        <li>{t("enroll.consentDeleted")}</li>
+        <li>{t("enroll.consentQr")}</li>
       </ul>
       <label className="flex items-center gap-2 text-sm">
         <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
-        I agree to biometric processing for entry to this event.
+        {t("enroll.consentAgree")}
       </label>
       <button type="button" disabled={!agreed} onClick={onAccept}
         className="rounded-md bg-slate-900 px-4 py-2 text-white disabled:opacity-50">
-        Continue
+        {t("enroll.continue")}
       </button>
     </div>
   );
 }
 
 function CaptureStep({ tips, error, onCaptured }: { tips: string[]; error: string | null; onCaptured: (photo: Blob) => void }) {
+  const { t } = useLanguage();
   const camera = useCamera();
   const [capturing, setCapturing] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
@@ -147,7 +156,7 @@ function CaptureStep({ tips, error, onCaptured }: { tips: string[]; error: strin
     try {
       onCaptured(await camera.capture());
     } catch {
-      setCaptureError("Couldn't take the photo. Please try again.");
+      setCaptureError(t("enroll.captureFailed"));
       setCapturing(false);
     }
   }
@@ -156,8 +165,8 @@ function CaptureStep({ tips, error, onCaptured }: { tips: string[]; error: strin
     <div className="space-y-4">
       {tips.length > 0 && (
         <div role="alert" className="rounded-md border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-          <p className="font-medium">Let's try that again:</p>
-          <ul className="mt-1 list-disc pl-5">
+          <p className="font-medium">{t("enroll.tryAgainTitle")}</p>
+          <ul className="mt-1 list-disc ps-5">
             {tips.map((tip) => <li key={tip}>{tip}</li>)}
           </ul>
         </div>
@@ -169,16 +178,17 @@ function CaptureStep({ tips, error, onCaptured }: { tips: string[]; error: strin
           <div className="h-3/4 aspect-[3/4] rounded-[50%] border-4 border-white/80 shadow-[0_0_0_9999px_rgba(15,23,42,0.35)]" />
         </div>
       </Camera>
-      <p className="text-sm text-slate-600">Good light, look straight at the camera, no sunglasses.</p>
+      <p className="text-sm text-slate-600">{t("enroll.captureHint")}</p>
       <button type="button" onClick={() => void takePhoto()} disabled={camera.status !== "ready" || capturing}
         className="rounded-md bg-slate-900 px-4 py-2 text-white disabled:opacity-50">
-        Take photo
+        {t("enroll.takePhoto")}
       </button>
     </div>
   );
 }
 
 function Review({ photo, uploading, onRetake, onUse }: { photo: Blob; uploading: boolean; onRetake: () => void; onUse: () => void }) {
+  const { t } = useLanguage();
   const [url, setUrl] = useState<string | null>(null);
 
   useEffect(() => {
@@ -189,16 +199,16 @@ function Review({ photo, uploading, onRetake, onUse }: { photo: Blob; uploading:
 
   return (
     <div className="space-y-4">
-      {url && <img src={url} alt="Your photo" className="w-full -scale-x-100 rounded-lg" />}
+      {url && <img src={url} alt={t("enroll.photoAlt")} className="w-full -scale-x-100 rounded-lg" />}
       {uploading ? (
-        <Spinner label="Checking your photo…" />
+        <Spinner label={t("enroll.checking")} />
       ) : (
         <div className="flex gap-3">
           <button type="button" onClick={onUse} className="rounded-md bg-slate-900 px-4 py-2 text-white">
-            Use this photo
+            {t("enroll.usePhoto")}
           </button>
           <button type="button" onClick={onRetake} className="rounded-md border px-4 py-2">
-            Retake
+            {t("enroll.retake")}
           </button>
         </div>
       )}
@@ -207,11 +217,12 @@ function Review({ photo, uploading, onRetake, onUse }: { photo: Blob; uploading:
 }
 
 function Done() {
+  const { t } = useLanguage();
   return (
     <div className="space-y-4 text-center">
-      <p className="text-2xl font-bold text-emerald-700">Face entry is ready!</p>
-      <p className="text-slate-600">At the gate, just look at the camera. Your QR code still works as a backup.</p>
-      <Link to="/tickets" className="inline-block rounded-md bg-slate-900 px-4 py-2 text-white">My tickets</Link>
+      <p className="text-2xl font-bold text-emerald-700">{t("enroll.doneTitle")}</p>
+      <p className="text-slate-600">{t("enroll.doneBody")}</p>
+      <Link to="/tickets" className="inline-block rounded-md bg-slate-900 px-4 py-2 text-white">{t("enroll.myTickets")}</Link>
     </div>
   );
 }

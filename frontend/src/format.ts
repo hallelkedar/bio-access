@@ -1,10 +1,17 @@
-/** Shown in the viewer's own locale and time zone. */
-export function formatDateTime(iso: string): string {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
+import type { Lang } from "./i18n/translate";
+
+/** Hebrew uses Israeli formatting; English keeps the browser's own locale. */
+export function localeFor(lang: Lang = "en"): string | undefined {
+  return lang === "he" ? "he-IL" : undefined;
 }
 
-export function formatPrice(cents: number, currency: string): string {
-  return new Intl.NumberFormat(undefined, { style: "currency", currency }).format(cents / 100);
+/** Shown in the viewer's own time zone. */
+export function formatDateTime(iso: string, lang: Lang = "en"): string {
+  return new Intl.DateTimeFormat(localeFor(lang), { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
+}
+
+export function formatPrice(cents: number, currency: string, lang: Lang = "en"): string {
+  return new Intl.NumberFormat(localeFor(lang), { style: "currency", currency }).format(cents / 100);
 }
 
 /** ISO timestamp → value for <input type="datetime-local"> in the viewer's time zone. */

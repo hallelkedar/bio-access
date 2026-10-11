@@ -6,6 +6,7 @@ import { myTickets, refreshPayment, startCheckout } from "../../api/tickets";
 import type { TicketStatus } from "../../api/types";
 import { ErrorBox } from "../../components/ErrorBox";
 import { Spinner } from "../../components/Spinner";
+import { useLanguage } from "../../i18n/LanguageProvider";
 import { redirectTo } from "../../navigation";
 
 type Outcome = "waiting" | "confirming" | "ready" | "slow" | "missing";
@@ -27,6 +28,7 @@ export function CheckoutSuccessPage({
   refreshAtMs?: number[];
 }) {
   const ticketId = Number(useSearchParams()[0].get("ticket_id"));
+  const { t } = useLanguage();
   const [outcome, setOutcome] = useState<Outcome>("waiting");
   const [round, setRound] = useState(0); // "Check again" starts a new round
   // A string key: an array prop is a new object on every render and would restart the loop.
@@ -72,31 +74,31 @@ export function CheckoutSuccessPage({
 
   return (
     <section className="mx-auto max-w-md text-center">
-      {outcome === "waiting" && <Spinner label="Confirming your payment…" />}
-      {outcome === "confirming" && <Spinner label="Confirming with the payment provider…" />}
+      {outcome === "waiting" && <Spinner label={t("checkout.confirming")} />}
+      {outcome === "confirming" && <Spinner label={t("checkout.confirmingProvider")} />}
       {outcome === "ready" && (
         <>
-          <h1 className="text-2xl font-bold text-emerald-700">Payment received!</h1>
-          <p className="mt-2 text-slate-600">Your ticket is ready. A confirmation email is on its way.</p>
+          <h1 className="text-2xl font-bold text-emerald-700">{t("checkout.receivedTitle")}</h1>
+          <p className="mt-2 text-slate-600">{t("checkout.receivedBody")}</p>
           <Link to="/tickets" className="mt-6 inline-block rounded-md bg-slate-900 px-4 py-2 text-white">
-            My tickets
+            {t("checkout.myTickets")}
           </Link>
         </>
       )}
       {outcome === "slow" && (
         <>
-          <h1 className="text-2xl font-bold">Payment is being processed</h1>
-          <p className="mt-2 text-slate-600">This can take a minute. If you were charged, your ticket will appear soon.</p>
+          <h1 className="text-2xl font-bold">{t("checkout.slowTitle")}</h1>
+          <p className="mt-2 text-slate-600">{t("checkout.slowBody")}</p>
           <button type="button" onClick={() => setRound((r) => r + 1)}
             className="mt-6 rounded-md bg-slate-900 px-4 py-2 text-white">
-            Check again
+            {t("checkout.checkAgain")}
           </button>
         </>
       )}
       {outcome === "missing" && (
         <>
-          <h1 className="text-2xl font-bold">Ticket not found</h1>
-          <Link to="/events" className="mt-4 inline-block text-blue-700 underline">Back to events</Link>
+          <h1 className="text-2xl font-bold">{t("checkout.missingTitle")}</h1>
+          <Link to="/events" className="mt-4 inline-block text-blue-700 underline">{t("checkout.backToEvents")}</Link>
         </>
       )}
     </section>
@@ -105,6 +107,7 @@ export function CheckoutSuccessPage({
 
 export function CheckoutCancelPage() {
   const ticketId = Number(useSearchParams()[0].get("ticket_id"));
+  const { t, lang } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -114,21 +117,21 @@ export function CheckoutCancelPage() {
     try {
       redirectTo(await startCheckout(ticketId));
     } catch (err) {
-      setError(apiErrorMessage(err));
+      setError(apiErrorMessage(err, {}, lang));
       setBusy(false);
     }
   }
 
   return (
     <section className="mx-auto max-w-md text-center">
-      <h1 className="text-2xl font-bold">Payment cancelled</h1>
-      <p className="mt-2 text-slate-600">No charge was made. Your seat stays reserved for now.</p>
+      <h1 className="text-2xl font-bold">{t("checkout.cancelledTitle")}</h1>
+      <p className="mt-2 text-slate-600">{t("checkout.cancelledBody")}</p>
       <div className="mt-6 flex justify-center gap-4">
         <button type="button" onClick={() => void retry()} disabled={busy || !ticketId}
           className="rounded-md bg-slate-900 px-4 py-2 text-white disabled:opacity-50">
-          {busy ? "Redirecting…" : "Try again"}
+          {busy ? t("common.redirecting") : t("checkout.tryAgain")}
         </button>
-        <Link to="/events" className="rounded-md border px-4 py-2">Back to events</Link>
+        <Link to="/events" className="rounded-md border px-4 py-2">{t("checkout.backToEvents")}</Link>
       </div>
       <div className="mt-4"><ErrorBox message={error} /></div>
     </section>

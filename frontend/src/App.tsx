@@ -101,20 +101,22 @@ function RootLayout() {
 }
 
 function Home() {
+  const { t } = useLanguage();
   return (
     <section>
-      <h1 className="text-2xl font-bold">Welcome to BioAccess</h1>
-      <p className="mt-2 text-slate-600">Face-recognition entry for your events.</p>
+      <h1 className="text-2xl font-bold">{t("home.title")}</h1>
+      <p className="mt-2 text-slate-600">{t("home.subtitle")}</p>
     </section>
   );
 }
 
 function NotFound() {
+  const { t } = useLanguage();
   return (
     <section>
-      <h1 className="text-2xl font-bold">Not found</h1>
+      <h1 className="text-2xl font-bold">{t("notFound.title")}</h1>
       <p className="mt-2">
-        <Link to="/" className="text-blue-700 underline">Back home</Link>
+        <Link to="/" className="text-blue-700 underline">{t("common.backHome")}</Link>
       </p>
     </section>
   );

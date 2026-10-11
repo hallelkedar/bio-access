@@ -52,10 +52,16 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }
 
+/** English, fixed: what components get when rendered outside a provider (e.g. on their own). */
+const FALLBACK: LanguageState = {
+  lang: "en",
+  setLang: () => {
+    if (import.meta.env.DEV) console.warn("[i18n] setLang called outside <LanguageProvider>");
+  },
+  t: (key, vars) => translate("en", key, vars),
+  dir: "ltr",
+};
+
 export function useLanguage(): LanguageState {
-  const context = useContext(LanguageContext);
-  if (!context) {
-    throw new Error("useLanguage must be used inside <LanguageProvider>");
-  }
-  return context;
+  return useContext(LanguageContext) ?? FALLBACK;
 }

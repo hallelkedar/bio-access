@@ -7,11 +7,13 @@ import type { Event, MyTicket } from "../../api/types";
 import { ErrorBox } from "../../components/ErrorBox";
 import { Spinner } from "../../components/Spinner";
 import { formatDateTime, formatPrice } from "../../format";
+import { useLanguage } from "../../i18n/LanguageProvider";
 import { redirectTo } from "../../navigation";
 
 type Loaded = { events: Event[]; tickets: Map<number, MyTicket> };
 
 export function EventsPage() {
+  const { t, lang } = useLanguage();
   const [data, setData] = useState<Loaded | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -22,9 +24,9 @@ export function EventsPage() {
       const [events, tickets] = await Promise.all([listEvents(), myTickets()]);
       setData({ events, tickets: new Map(tickets.map((t) => [t.event_id, t])) });
     } catch (err) {
-      setError(apiErrorMessage(err));
+      setError(apiErrorMessage(err, {}, lang));
     }
-  }, []);
+  }, [lang]);
 
   useEffect(() => {
     void load();
@@ -33,24 +35,24 @@ export function EventsPage() {
   if (error) {
     return (
       <section>
-        <h1 className="text-2xl font-bold">Events</h1>
+        <h1 className="text-2xl font-bold">{t("events.title")}</h1>
         <div className="mt-4 space-y-3">
           <ErrorBox message={error} />
           <button type="button" onClick={() => void load()} className="rounded-md border px-3 py-1.5 text-sm">
-            Retry
+            {t("common.retry")}
           </button>
         </div>
       </section>
     );
   }
   if (!data) {
-    return <Spinner label="Loading events…" />;
+    return <Spinner label={t("events.loading")} />;
   }
   return (
     <section>
-      <h1 className="text-2xl font-bold">Events</h1>
+      <h1 className="text-2xl font-bold">{t("events.title")}</h1>
       {data.events.length === 0 ? (
-        <p className="mt-4 text-slate-600">No upcoming events right now. Check back soon.</p>
+        <p className="mt-4 text-slate-600">{t("events.empty")}</p>
       ) : (
         <ul className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {data.events.map((event) => (
@@ -63,6 +65,7 @@ export function EventsPage() {
 }
 
 function EventCard({ event, ticket }: { event: Event; ticket: MyTicket | undefined }) {
+  const { lang } = useLanguage();
   return (
     <li className="flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
       {event.cover_image_url ? (
@@ -73,8 +76,8 @@ function EventCard({ event, ticket }: { event: Event; ticket: MyTicket | undefin
       <div className="flex flex-1 flex-col p-4">
         <h2 className="text-lg font-semibold">{event.name}</h2>
         <p className="text-sm text-slate-600">{event.location}</p>
-        <p className="mt-1 text-sm text-slate-600">{formatDateTime(event.starts_at)}</p>
-        <p className="mt-2 font-medium">{formatPrice(event.price_cents, event.currency)}</p>
+        <p className="mt-1 text-sm text-slate-600">{formatDateTime(event.starts_at, lang)}</p>
+        <p className="mt-2 font-medium">{formatPrice(event.price_cents, event.currency, lang)}</p>
         <div className="mt-auto pt-4">
           <TicketAction event={event} ticket={ticket} />
         </div>
@@ -88,11 +91,12 @@ function Badge({ children }: { children: string }) {
 }
 
 function TicketAction({ event, ticket }: { event: Event; ticket: MyTicket | undefined }) {
+  const { t, lang } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (ticket?.status === "VALID") return <Badge>You have a ticket</Badge>;
-  if (ticket?.status === "ENTERED") return <Badge>Entered</Badge>;
+  if (ticket?.status === "VALID") return <Badge>{t("events.haveTicket")}</Badge>;
+  if (ticket?.status === "ENTERED") return <Badge>{t("events.entered")}</Badge>;
   const pending = ticket?.status === "PENDING_PAYMENT";
 
   async function pay() {
@@ -103,7 +107,7 @@ function TicketAction({ event, ticket }: { event: Event; ticket: MyTicket | unde
       const ticketId = pending && ticket ? ticket.id : (await buyTicket(event.id)).id;
       redirectTo(await startCheckout(ticketId));
     } catch (err) {
-      setError(apiErrorMessage(err));
+      setError(apiErrorMessage(err, {}, lang));
       setBusy(false);
     }
   }
@@ -116,7 +120,7 @@ function TicketAction({ event, ticket }: { event: Event; ticket: MyTicket | unde
         disabled={busy}
         className="w-full rounded-md bg-slate-900 px-4 py-2 font-medium text-white disabled:opacity-50"
       >
-        {busy ? "Redirecting…" : pending ? "Complete payment" : "Buy ticket"}
+        {busy ? t("common.redirecting") : pending ? t("events.completePayment") : t("events.buy")}
       </button>
       <ErrorBox message={error} />
     </div>

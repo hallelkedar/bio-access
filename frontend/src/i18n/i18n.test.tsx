@@ -106,14 +106,14 @@ describe("LanguageProvider", () => {
     expect(result.current.lang).toBe("he");
   });
 
-  it("useLanguage outside the provider explains the mistake", () => {
-    vi.spyOn(console, "error").mockImplementation(() => {});
-    function Orphan() {
-      useLanguage();
-      return null;
-    }
+  it("outside a provider, components get fixed English", () => {
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { result } = renderHook(() => useLanguage());
 
-    expect(() => render(<Orphan />)).toThrow("useLanguage must be used inside <LanguageProvider>");
+    expect(result.current.lang).toBe("en");
+    expect(result.current.t("header.logOut")).toBe("Log out");
+    act(() => result.current.setLang("he"));
+    expect(result.current.lang).toBe("en");
   });
 
   it("t is available to components", () => {

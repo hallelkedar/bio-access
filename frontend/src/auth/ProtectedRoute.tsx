@@ -2,6 +2,7 @@ import { Navigate, Outlet, useLocation } from "react-router";
 
 import type { Role } from "../api/types";
 import { Spinner } from "../components/Spinner";
+import { useLanguage } from "../i18n/LanguageProvider";
 import { useAuth } from "./AuthContext";
 
 /**
@@ -11,6 +12,7 @@ import { useAuth } from "./AuthContext";
 export function ProtectedRoute({ roles }: { roles: Role[] }) {
   const { user, status } = useAuth();
   const location = useLocation();
+  const { t } = useLanguage();
 
   if (status === "loading") {
     return <Spinner />;
@@ -21,8 +23,8 @@ export function ProtectedRoute({ roles }: { roles: Role[] }) {
   if (!roles.includes(user.role)) {
     return (
       <section>
-        <h1 className="text-2xl font-bold">Not allowed</h1>
-        <p className="mt-2 text-slate-600">Your account can't open this page.</p>
+        <h1 className="text-2xl font-bold">{t("guard.notAllowedTitle")}</h1>
+        <p className="mt-2 text-slate-600">{t("guard.notAllowedBody")}</p>
       </section>
     );
   }

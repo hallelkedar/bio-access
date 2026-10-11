@@ -7,14 +7,8 @@ import type { MyTicket, TicketStatus } from "../../api/types";
 import { ErrorBox } from "../../components/ErrorBox";
 import { Spinner } from "../../components/Spinner";
 import { formatDateTime } from "../../format";
+import { useLanguage } from "../../i18n/LanguageProvider";
 import { redirectTo } from "../../navigation";
-
-const STATUS_LABEL: Record<TicketStatus, string> = {
-  PENDING_PAYMENT: "Awaiting payment",
-  VALID: "Valid",
-  ENTERED: "Used",
-  CANCELLED: "Cancelled",
-};
 
 const STATUS_STYLE: Record<TicketStatus, string> = {
   PENDING_PAYMENT: "bg-amber-100 text-amber-800",
@@ -33,6 +27,7 @@ export function sortTickets(tickets: MyTicket[], now: Date = new Date()): MyTick
 }
 
 export function MyTicketsPage() {
+  const { t, lang } = useLanguage();
   const [tickets, setTickets] = useState<MyTicket[] | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -42,9 +37,9 @@ export function MyTicketsPage() {
     try {
       setTickets(sortTickets(await myTickets()));
     } catch (err) {
-      setError(apiErrorMessage(err));
+      setError(apiErrorMessage(err, {}, lang));
     }
-  }, []);
+  }, [lang]);
 
   useEffect(() => {
     void load();
@@ -52,19 +47,19 @@ export function MyTicketsPage() {
 
   return (
     <section>
-      <h1 className="text-2xl font-bold">My tickets</h1>
+      <h1 className="text-2xl font-bold">{t("tickets.title")}</h1>
       {error ? (
         <div className="mt-4 space-y-3">
           <ErrorBox message={error} />
           <button type="button" onClick={() => void load()} className="rounded-md border px-3 py-1.5 text-sm">
-            Retry
+            {t("common.retry")}
           </button>
         </div>
       ) : !tickets ? (
-        <Spinner label="Loading tickets…" />
+        <Spinner label={t("tickets.loading")} />
       ) : tickets.length === 0 ? (
         <p className="mt-4 text-slate-600">
-          No tickets yet. <Link to="/events" className="text-blue-700 underline">Browse events</Link>
+          {t("tickets.empty")} <Link to="/events" className="text-blue-700 underline">{t("tickets.browse")}</Link>
         </p>
       ) : (
         <ul className="mt-6 space-y-4">
@@ -78,6 +73,7 @@ export function MyTicketsPage() {
 }
 
 function TicketCard({ ticket }: { ticket: MyTicket }) {
+  const { t, lang } = useLanguage();
   const muted = ticket.status === "CANCELLED";
   return (
     <li className={`rounded-lg border border-slate-200 bg-white p-4 shadow-sm ${muted ? "opacity-60" : ""}`}>
@@ -85,21 +81,21 @@ function TicketCard({ ticket }: { ticket: MyTicket }) {
         <div>
           <h2 className="text-lg font-semibold">{ticket.event.name}</h2>
           <p className="text-sm text-slate-600">
-            {ticket.event.location} · {formatDateTime(ticket.event.starts_at)}
+            {ticket.event.location} · {formatDateTime(ticket.event.starts_at, lang)}
           </p>
           <span className={`mt-2 inline-block rounded-full px-2.5 py-0.5 text-xs font-medium ${STATUS_STYLE[ticket.status]}`}>
-            {STATUS_LABEL[ticket.status]}
+            {t(`tickets.status.${ticket.status}`)}
           </span>
           {ticket.status === "ENTERED" && ticket.entered_at && (
-            <p className="mt-2 text-sm text-slate-600">Entered at {formatDateTime(ticket.entered_at)}</p>
+            <p className="mt-2 text-sm text-slate-600">{t("tickets.enteredAt", { time: formatDateTime(ticket.entered_at, lang) })}</p>
           )}
           {ticket.status === "VALID" && (
             <p className="mt-3 text-sm">
               {ticket.enrolled ? (
-                <span className="text-emerald-700">Face entry ready ✓</span>
+                <span className="text-emerald-700">{t("tickets.faceReady")}</span>
               ) : (
                 <Link to={`/enroll/${ticket.id}`} className="text-blue-700 underline">
-                  Set up face entry
+                  {t("tickets.setUpFace")}
                 </Link>
               )}
             </p>
@@ -113,6 +109,7 @@ function TicketCard({ ticket }: { ticket: MyTicket }) {
 }
 
 function QrCode({ ticketId, eventName }: { ticketId: number; eventName: string }) {
+  const { t } = useLanguage();
   const [url, setUrl] = useState<string | null>(null);
   const [failed, setFailed] = useState(false);
   const [attempt, setAttempt] = useState(0);
@@ -137,25 +134,26 @@ function QrCode({ ticketId, eventName }: { ticketId: number; eventName: string }
   if (failed) {
     return (
       <div className="text-sm text-slate-600">
-        Couldn't load the QR code.{" "}
+        {t("tickets.qrFailed")}{" "}
         <button type="button" onClick={() => setAttempt((n) => n + 1)} className="text-blue-700 underline">
-          Retry
+          {t("common.retry")}
         </button>
       </div>
     );
   }
-  if (!url) return <Spinner label="Loading QR…" />;
+  if (!url) return <Spinner label={t("tickets.qrLoading")} />;
   return (
     <figure className="text-center">
-      <img src={url} alt={`Entry QR code for ${eventName}`} className="h-40 w-40 rounded border border-slate-200" />
+      <img src={url} alt={t("tickets.qrAlt", { event: eventName })} className="h-40 w-40 rounded border border-slate-200" />
       <figcaption className="mt-1 max-w-40 text-xs text-slate-500">
-        Show this at the gate if face recognition isn't available.
+        {t("tickets.qrCaption")}
       </figcaption>
     </figure>
   );
 }
 
 function CompletePayment({ ticketId }: { ticketId: number }) {
+  const { t, lang } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -165,7 +163,7 @@ function CompletePayment({ ticketId }: { ticketId: number }) {
     try {
       redirectTo(await startCheckout(ticketId));
     } catch (err) {
-      setError(apiErrorMessage(err));
+      setError(apiErrorMessage(err, {}, lang));
       setBusy(false);
     }
   }
@@ -174,7 +172,7 @@ function CompletePayment({ ticketId }: { ticketId: number }) {
     <div className="mt-3 space-y-2">
       <button type="button" onClick={() => void pay()} disabled={busy}
         className="rounded-md bg-slate-900 px-3 py-1.5 text-sm text-white disabled:opacity-50">
-        {busy ? "Redirecting…" : "Complete payment"}
+        {busy ? t("common.redirecting") : t("tickets.completePayment")}
       </button>
       <ErrorBox message={error} />
     </div>

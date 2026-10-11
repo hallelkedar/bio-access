@@ -28,6 +28,11 @@ def get_by_id(db: Session, ticket_id: int) -> Ticket | None:
     return db.get(Ticket, ticket_id)
 
 
+def get_by_id_for_update(db: Session, ticket_id: int) -> Ticket | None:
+    """Load the ticket and lock its row until the transaction ends (SELECT ... FOR UPDATE)."""
+    return db.scalars(select(Ticket).where(Ticket.id == ticket_id).with_for_update()).first()
+
+
 def list_by_user(db: Session, user_id: int) -> list[Ticket]:
     """User's tickets with their event loaded in the same query, by event start."""
     query = (

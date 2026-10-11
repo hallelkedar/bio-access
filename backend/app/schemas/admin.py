@@ -4,6 +4,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.models.access_log import AccessMethod, AccessReason, AccessResult
+from app.models.user import UserRole
+from app.schemas.user import UserRead
 
 
 class AccessLogFilters(BaseModel):
@@ -79,3 +81,21 @@ class SettingsRead(BaseModel):
     face_match_threshold: float
     default_face_match_threshold: float
     source: Literal["database", "default"]
+
+
+class UserFilters(BaseModel):
+    """Query parameters of GET /api/admin/users (all optional)."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    role: UserRole | None = None
+    q: str | None = Field(default=None, min_length=1, max_length=100, description="part of email or name")
+    limit: int = Field(default=50, ge=1, le=200)
+    offset: int = Field(default=0, ge=0)
+
+
+class UserPage(BaseModel):
+    items: list[UserRead]
+    total: int
+    limit: int
+    offset: int

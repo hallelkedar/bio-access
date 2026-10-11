@@ -6,8 +6,8 @@ from sqlalchemy.orm import Session
 from app.core.deps import require_role
 from app.db.session import get_db
 from app.models.user import User, UserRole
-from app.schemas.admin import AccessLogFilters, AccessLogPage, EventStats, SettingsRead, SettingsUpdate
-from app.services import admin_logs, analytics
+from app.schemas.admin import AccessLogFilters, AccessLogPage, EventStats, SettingsRead, SettingsUpdate, UserFilters, UserPage
+from app.services import admin_logs, admin_users, analytics
 from app.services import settings as settings_service
 from app.services.event import EventNotFoundError
 
@@ -48,3 +48,12 @@ def update_settings(
     data: SettingsUpdate, db: Session = Depends(get_db), admin: User = Depends(require_admin)
 ) -> SettingsRead:
     return settings_service.set_face_match_threshold(db, data.face_match_threshold, admin)
+
+
+@router.get("/users", response_model=UserPage)
+def list_users(
+    filters: Annotated[UserFilters, Query()],
+    db: Session = Depends(get_db),
+    _: User = Depends(require_admin),
+) -> UserPage:
+    return admin_users.list_users(db, filters)

@@ -6,8 +6,9 @@ from sqlalchemy.orm import Session
 from app.core.deps import require_role
 from app.db.session import get_db
 from app.models.user import User, UserRole
-from app.schemas.admin import AccessLogFilters, AccessLogPage, EventStats
+from app.schemas.admin import AccessLogFilters, AccessLogPage, EventStats, SettingsRead, SettingsUpdate
 from app.services import admin_logs, analytics
+from app.services import settings as settings_service
 from app.services.event import EventNotFoundError
 
 router = APIRouter(prefix="/api/admin", tags=["admin"])
@@ -35,3 +36,15 @@ def event_stats(
         return analytics.event_stats(db, event_id)
     except EventNotFoundError:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="event not found")
+
+
+@router.get("/settings", response_model=SettingsRead)
+def get_settings_view(db: Session = Depends(get_db), _: User = Depends(require_admin)) -> SettingsRead:
+    return settings_service.get_threshold_info(db)
+
+
+@router.put("/settings", response_model=SettingsRead)
+def update_settings(
+    data: SettingsUpdate, db: Session = Depends(get_db), admin: User = Depends(require_admin)
+) -> SettingsRead:
+    return settings_service.set_face_match_threshold(db, data.face_match_threshold, admin)

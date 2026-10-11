@@ -1,4 +1,5 @@
 from datetime import datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -65,3 +66,16 @@ class EventStats(BaseModel):
     entries_per_30_min: list[EntryBucket]
     decisions: DecisionBreakdown
     occupancy: Occupancy
+
+
+MIN_FACE_MATCH_THRESHOLD = 80.0  # below this, strangers start getting in (false accepts)
+
+
+class SettingsUpdate(BaseModel):
+    face_match_threshold: float = Field(ge=MIN_FACE_MATCH_THRESHOLD, le=100.0)
+
+
+class SettingsRead(BaseModel):
+    face_match_threshold: float
+    default_face_match_threshold: float
+    source: Literal["database", "default"]

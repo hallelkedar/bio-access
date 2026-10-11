@@ -11,6 +11,8 @@ import { getToken, setToken } from "./tokenStore";
 vi.mock("../api/auth");
 vi.mock("../api/events", () => ({ listEvents: vi.fn().mockResolvedValue([]) }));
 vi.mock("../api/tickets", () => ({ myTickets: vi.fn().mockResolvedValue([]) }));
+vi.mock("../api/adminEvents", () => ({ listAllEvents: vi.fn().mockResolvedValue([]) }));
+vi.mock("../hooks/useAdminFeed", () => ({ useAdminFeed: () => ({ status: "live", events: [] }) }));
 const mocked = vi.mocked(authApi);
 
 beforeEach(() => {

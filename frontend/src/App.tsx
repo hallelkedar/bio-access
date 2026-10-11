@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { HOME_BY_ROLE } from "./auth/roles";
 import { AdminLayout } from "./pages/admin/AdminLayout";
+import { DashboardPage } from "./pages/admin/DashboardPage";
 import { EventsAdminPage } from "./pages/admin/EventsAdminPage";
 import { GatePage } from "./pages/gate/GatePage";
 import { LoginPage } from "./pages/LoginPage";
@@ -130,7 +131,7 @@ export const routes: RouteObject[] = [
             path: "admin",
             element: <AdminLayout />,
             children: [
-              { index: true, element: <Placeholder title="Admin dashboard" /> },
+              { index: true, element: <DashboardPage /> },
               { path: "events", element: <EventsAdminPage /> },
               { path: "logs", element: <Placeholder title="Access logs" /> },
               { path: "users", element: <Placeholder title="Users" /> },

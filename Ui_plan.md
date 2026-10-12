@@ -341,6 +341,52 @@ states). Output a table: screen | width | defect | likely cause in the code
 ```
 **אימות:** הטבלה מכסה את מה שאתה רואה בעצמך. תוסיף ידנית כל פגם שהוא פספס. הטבלה הזו היא רשימת העבודה לשלבים 17–18.
 
+### תוצאות שלב 12 (12.10.2026)
+
+צולם ב-headless Chrome דרך DevTools Protocol (בלי תלות חדשה): 4 מסכים × 390/820/1440 × EN/HE, עם 11 אירועים ו-64 רשומות לוג. גלישה אופקית נמדדה בדף עצמו (`scrollWidth`), לא רק לפי העין.
+
+> **לא באג UI, תיקון ב-`.env`:** ב-dev הדשבורד אף פעם לא "Live". ב-`.env` המקומי `CORS_ORIGINS=https://localhost:5173`, אבל Vite מגיש **http**, אז ה-WebSocket נסגר עם 4403. `.env.example` נכון (`http`).
+
+**🔴 גבוה: שבור או מטעה**
+
+| Screen | Width | Defect | Likely cause | Fix | Effort | Step |
+|---|---|---|---|---|---|---|
+| Dashboard | 390 (EN+HE) | Page scrolls sideways (635px); in Hebrew it's unusable, with the content pushed off-screen | `DashboardPage.tsx:101-106`: the event `<select>` is as wide as its longest option | `w-full min-w-0` on the label and select; stack them on mobile | S | 18 |
+| Dashboard | 390 | The chart card overflows, so "View as table" and the right-hand times are cut off | `ColumnChart.tsx:82`: `whitespace-nowrap` labels plus a grid item with no `min-w-0` (`DashboardPage.tsx:122`) | `min-w-0` on grid children; fewer x-labels on narrow screens | S | 18 |
+| Dashboard | all | Y-axis reads `1,1,1,0,0` (duplicate ticks) | `chartMath.ts:21` `ticks()` gives 0.25 steps; `ColumnChart.tsx:44` rounds them | Integer ticks only (step = max(1, max/4)) | S | 18 |
+| Dashboard | all | A closed-connection error shows as "Session expired — log in again" | `PILL.unauthorized` covers both 4401 and 4403 | Separate "Not allowed" (4403) from "Session expired" (4401) | S | 18 |
+| Dashboard | all | Defaults to Winter Gala (in November, 0 entries) instead of today's running event | `DashboardPage.tsx:51` picks the first ACTIVE event in list order | Prefer the ACTIVE event whose start–end window contains now, then the soonest | S | 18 |
+| My tickets | all | Book Fair is **CLOSED** but still shows "Valid" with a QR code and "Set up face entry" | `MyTicket.event` has no `status` | Event status on the ticket | M | 19 |
+| Logs | 390 | Page scrolls sideways (544px) | `LogsPage.tsx:88`: the Event `<select>` is too wide | `w-full`; a filter grid | S | 17 |
+
+**🟡 בינוני: פריסה לא מסודרת**
+
+| Screen | Width | Defect | Likely cause | Fix | Effort | Step |
+|---|---|---|---|---|---|---|
+| Logs | 820 | Rows have uneven heights: "✓" sits above "Approved", `north-` / `1` breaks at the hyphen, event names wrap to 3 lines | `LogsPage.tsx:141-150`: only the time cell has `nowrap` | `nowrap` on gate, method and result; truncate event name with a tooltip | S | 17 |
+| Logs | 390 | 8-column table; only Time, Event and Gate are visible, with no hint that it scrolls | `LogsPage.tsx:129` | Card list under `sm`, or pin the first column and add an edge fade | M | 17 |
+| Logs | 1440 | Filters wrap unevenly (huge Event select, tiny Method select); no grouping | `LogsPage.tsx:87` `flex-wrap` | 4-column filter grid, and Clear aligned to the end | S | 17 |
+| Logs | all | Times have no seconds, so 50 rows all read "8:36 AM" and can't be told apart | `format.ts:10` `timeStyle: "short"` | A seconds format for logs only | S | 17 |
+| Logs | all | Similarity shows "99.0" with no unit; 50 rows and the header scrolls away | `LogsPage.tsx:150` | `99.0%`; `sticky top-0` on `thead` | S | 17 |
+| Logs / Events | all (HE) | Date inputs show native `mm/dd/yyyy` even in Hebrew | Raw `datetime-local` | Real date/time picker | M | 15 |
+| Admin events | 390 | Price, capacity and actions are off-screen inside the table scroll | `EventsAdminPage.tsx:64` | Card layout under `sm` | M | 21 |
+| Admin events | 1440 | The DRAFT row's "Delete" wraps to a second line, so actions are misaligned | `EventsAdminPage.tsx:129` `flex-wrap` | `nowrap` with a fixed actions column, or a "⋯" menu | S | 21 |
+| My tickets | all (HE) | The location/date line scrambles in RTL (the number moves to the end of the line) | `MyTicketsPage.tsx:84`: Latin and Hebrew text mixed without isolation | Wrap each part in `<bdi>` | S | 19 |
+| My tickets | 1440 | Wide cards with the QR pushed to the far edge and an empty middle | `MyTicketsPage.tsx:80` `justify-between` | Narrower column or 2-column grid | S | 19 |
+| Header | 390 | The hamburger wraps to its own row, wasting about 45px on every page | `App.tsx:80` `order-last` in a `flex-wrap` nav | Keep it on the first row and drop "Log out" into the menu | S | 21 |
+
+**⚪ נמוך: ליטוש**
+
+| Screen | Width | Defect | Likely cause | Fix | Effort | Step |
+|---|---|---|---|---|---|---|
+| Dashboard | 1440 | The last x-label "12:30 PM" spills past the card border | `ColumnChart.tsx:82` `overflow-visible` | Align the last label to the end | S | 18 |
+| Dashboard | all | Empty chart is just grid lines, with no "No entries yet" | `ColumnChart` has no empty state | Empty state when the total is 0 | S | 18 |
+| Dashboard | ≥lg | "Show all reasons" floats outside its card; the denials card is much shorter than the chart beside it | `DashboardPage.tsx:124-129` | Move the toggle into the card footer; `items-stretch` | S | 18 |
+| Admin events | all | Free events show "₪0.00"; numbers are left-aligned; no sold/capacity figure | `EventsAdminPage.tsx:126-127` | "Free", `text-end tabular-nums`, `sold / capacity` | S | 21 |
+| Admin events | all | Locations like "asdf" | Free-text field | City picker | M | 16 |
+
+**לא נבדק:** tooltips בגרף (hover), התפריט הנפתח במובייל, ופיד חי עם רשומות.
+
 ---
 
 ## שלב 13 — אייקון ומטא-תגיות ב-`index.html`

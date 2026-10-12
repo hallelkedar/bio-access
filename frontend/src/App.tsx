@@ -6,6 +6,7 @@ import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { LanguageToggle } from "./components/LanguageToggle";
 import { LogoMark } from "./components/LogoMark";
+import { RouteTransition } from "./components/ui";
 import type { TranslationKey } from "./i18n/en";
 import { LanguageProvider, useLanguage } from "./i18n/LanguageProvider";
 import { AdminLayout } from "./pages/admin/AdminLayout";
@@ -141,7 +142,9 @@ function RootLayout() {
         <div className="min-h-screen bg-slate-50 text-slate-900">
           <Header />
           <main className="mx-auto max-w-5xl px-4 py-8">
-            <Outlet />
+            <RouteTransition>
+              <Outlet />
+            </RouteTransition>
           </main>
         </div>
       </AuthProvider>

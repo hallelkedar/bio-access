@@ -1,4 +1,4 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+import type { ComponentPropsWithRef, ReactNode } from "react";
 import { Link, type LinkProps } from "react-router";
 
 import { Spinner } from "./Spinner";
@@ -7,9 +7,9 @@ export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 export type ButtonSize = "sm" | "md" | "lg";
 
 const BASE =
-  "inline-flex items-center justify-center gap-2 rounded-control font-medium transition-[background-color,box-shadow,transform] " +
+  "inline-flex items-center justify-center gap-2 rounded-control font-medium transition-[background-color,box-shadow,translate,scale] " +
   "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 " +
-  "disabled:pointer-events-none disabled:opacity-50 active:translate-y-px";
+  "disabled:pointer-events-none disabled:opacity-50 active:translate-y-px active:scale-[0.98]";
 
 const VARIANTS: Record<ButtonVariant, string> = {
   primary: "bg-gradient-to-r from-brand-600 to-brand-500 text-white shadow-card hover:shadow-glow",
@@ -28,7 +28,7 @@ export function buttonClasses(variant: ButtonVariant = "primary", size: ButtonSi
   return `${BASE} ${VARIANTS[variant]} ${SIZES[size]} ${extra}`.trim();
 }
 
-interface ButtonProps extends ButtonHTMLAttributes<HTMLButtonElement> {
+interface ButtonProps extends ComponentPropsWithRef<"button"> {
   variant?: ButtonVariant;
   size?: ButtonSize;
   loading?: boolean;

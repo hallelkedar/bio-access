@@ -20,6 +20,11 @@ export const he: Record<TranslationKey, string> = {
   "common.retry": "נסו שוב",
   "common.redirecting": "מעבירים אתכם…",
   "common.backHome": "חזרה לדף הבית",
+  // --- ui kit
+  "ui.toast.region": "התראות",
+  "ui.toast.dismiss": "סגירת ההתראה",
+  "ui.confirm.confirm": "אישור",
+  "ui.confirm.cancel": "ביטול",
   "errors.generic": "משהו השתבש. נסו שוב.",
   "errors.offline": "אין חיבור לשרת. בדקו את החיבור לאינטרנט.",
   "errors.tooMany": "יותר מדי ניסיונות. המתינו דקה ונסו שוב.",

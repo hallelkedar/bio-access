@@ -19,6 +19,11 @@ export const en = {
   "common.retry": "Retry",
   "common.redirecting": "Redirecting…",
   "common.backHome": "Back home",
+  // --- ui kit
+  "ui.toast.region": "Notifications",
+  "ui.toast.dismiss": "Dismiss notification",
+  "ui.confirm.confirm": "Confirm",
+  "ui.confirm.cancel": "Cancel",
   "errors.generic": "Something went wrong. Please try again.",
   "errors.offline": "Can't reach the server. Check your connection.",
   "errors.tooMany": "Too many attempts. Please wait a minute and try again.",

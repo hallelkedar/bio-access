@@ -173,3 +173,128 @@ def test_uses_given_time_for_consent(db: Session, faces: FakeFaceProvider, valid
 
     profile = _profile(db, ticket.id)
     assert profile is not None and profile.consent_at == now
+
+
+# --- replacing the face photo ---------------------------------------------------------------
+
+NEW_PHOTO = image_bytes("JPEG", (80, 80))
+
+
+def _replace(
+    db: Session, faces: FakeFaceProvider, user: User, ticket_id: int, image: bytes = NEW_PHOTO, consent: bool = True
+) -> object:
+    return enrollment_service.replace_face(db, faces, user, ticket_id, image, consent, MB)
+
+
+@pytest.fixture
+def enrolled(db: Session, faces: FakeFaceProvider, valid_ticket: tuple[User, Ticket]) -> tuple[User, Ticket, str]:
+    user, ticket = valid_ticket
+    _enroll(db, faces, user, ticket.id)
+    profile = _profile(db, ticket.id)
+    assert profile is not None
+    return user, ticket, profile.face_id
+
+
+def test_replace_swaps_the_face_and_deletes_the_old_one(
+    db: Session, faces: FakeFaceProvider, enrolled: tuple[User, Ticket, str]
+) -> None:
+    user, ticket, old_face = enrolled
+    later = datetime.now(UTC) + timedelta(minutes=5)
+
+    result = enrollment_service.replace_face(db, faces, user, ticket.id, NEW_PHOTO, True, MB, now=later)
+
+    profile = _profile(db, ticket.id)
+    assert profile is not None and profile.face_id != old_face
+    assert profile.consent_at == later  # consent given again for the new photo
+    assert result.ticket_id == ticket.id  # type: ignore[attr-defined]
+    assert faces.search(ticket.event_id, NEW_PHOTO, threshold=95).face_id == profile.face_id  # type: ignore[union-attr]
+    assert faces.search(ticket.event_id, PHOTO, threshold=95) is None  # the old face is gone
+    assert faces.face_count(ticket.event_id) == 1
+
+
+def test_a_bad_new_photo_keeps_the_old_face(db: Session, faces: FakeFaceProvider, enrolled: tuple[User, Ticket, str]) -> None:
+    user, ticket, old_face = enrolled
+    faces.set_quality(NEW_PHOTO, QualityResult((QualityIssue.NO_FACE,)))
+
+    with pytest.raises(enrollment_service.LowQualityError):
+        _replace(db, faces, user, ticket.id)
+
+    assert _profile(db, ticket.id).face_id == old_face  # type: ignore[union-attr]
+    assert faces.search(ticket.event_id, PHOTO, threshold=95) is not None
+
+
+def test_provider_outage_keeps_the_old_face(db: Session, faces: FakeFaceProvider, enrolled: tuple[User, Ticket, str]) -> None:
+    user, ticket, old_face = enrolled
+    faces.available = False
+
+    with pytest.raises(FaceProviderError):
+        _replace(db, faces, user, ticket.id)
+
+    assert _profile(db, ticket.id).face_id == old_face  # type: ignore[union-attr]
+
+
+def test_db_failure_keeps_the_old_face_and_removes_the_new_copy(
+    db: Session, faces: FakeFaceProvider, enrolled: tuple[User, Ticket, str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    user, ticket, old_face = enrolled
+
+    def broken_lock(*_: object) -> None:
+        raise RuntimeError("db down")
+
+    monkeypatch.setattr("app.repositories.biometric_repository.get_by_ticket_id_for_update", broken_lock)
+
+    with pytest.raises(RuntimeError):
+        _replace(db, faces, user, ticket.id)
+
+    assert _profile(db, ticket.id).face_id == old_face  # type: ignore[union-attr]
+    assert faces.face_count(ticket.event_id) == 1
+    assert faces.search(ticket.event_id, PHOTO, threshold=95) is not None
+
+
+def test_failing_to_delete_the_old_face_still_succeeds(
+    db: Session, faces: FakeFaceProvider, enrolled: tuple[User, Ticket, str], monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    user, ticket, old_face = enrolled
+    real_delete = faces.delete_face
+
+    def flaky_delete(event_id: int, face_id: str) -> None:
+        if face_id == old_face:
+            raise FaceProviderError("timeout")
+        real_delete(event_id, face_id)
+
+    monkeypatch.setattr(faces, "delete_face", flaky_delete)
+
+    _replace(db, faces, user, ticket.id)
+
+    assert _profile(db, ticket.id).face_id != old_face  # type: ignore[union-attr]
+    assert "could not remove orphan face" in caplog.text
+
+
+def test_replace_needs_an_enrolled_ticket(db: Session, faces: FakeFaceProvider, valid_ticket: tuple[User, Ticket]) -> None:
+    user, ticket = valid_ticket
+
+    with pytest.raises(enrollment_service.NotEnrolledError):
+        _replace(db, faces, user, ticket.id)
+    assert faces.face_count(ticket.event_id) == 0
+
+
+def test_replace_checks_owner_consent_and_ticket(
+    db: Session, faces: FakeFaceProvider, make_user: MakeUser, enrolled: tuple[User, Ticket, str]
+) -> None:
+    user, ticket, _ = enrolled
+
+    with pytest.raises(enrollment_service.TicketNotFoundError):
+        _replace(db, faces, make_user(), ticket.id)
+    with pytest.raises(enrollment_service.ConsentRequiredError):
+        _replace(db, faces, user, ticket.id, consent=False)
+    ticket.status = TicketStatus.ENTERED
+    db.commit()
+    with pytest.raises(enrollment_service.TicketNotValidError):
+        _replace(db, faces, user, ticket.id)
+
+
+def test_replace_refused_once_the_event_ended(db: Session, faces: FakeFaceProvider, enrolled: tuple[User, Ticket, str]) -> None:
+    user, ticket, _ = enrolled
+
+    with pytest.raises(enrollment_service.EventNotOpenError):
+        enrollment_service.replace_face(db, faces, user, ticket.id, NEW_PHOTO, True, MB, now=datetime.now(UTC) + timedelta(days=30))

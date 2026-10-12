@@ -191,3 +191,62 @@ def test_provider_down_returns_503(
 @pytest.mark.parametrize("role", [UserRole.GATEKEEPER, UserRole.ADMIN])
 def test_only_users_enroll(client: TestClient, make_user: MakeUser, auth_headers: Headers, role: UserRole) -> None:
     assert _enroll(client, 1, auth_headers(make_user(role))).status_code == 403
+
+
+NEW_PHOTO = image_bytes("JPEG", (80, 80))
+
+
+def _replace(client: TestClient, ticket_id: int, headers: dict[str, str], body: bytes = NEW_PHOTO, consent: str = "true") -> Any:
+    return client.put(
+        f"/api/enrollment?ticket_id={ticket_id}&consent={consent}",
+        content=body,
+        headers={**headers, "Content-Type": "image/jpeg"},
+    )
+
+
+def test_replace_switches_the_face_the_gate_recognizes(
+    client: TestClient,
+    db: Session,
+    make_user: MakeUser,
+    make_event: MakeEvent,
+    auth_headers: Headers,
+    face_provider: FakeFaceProvider,
+) -> None:
+    headers = auth_headers(make_user())
+    ticket_id = _valid_ticket(client, db, make_event, headers)
+    assert _enroll(client, ticket_id, headers).status_code == 201
+    from app.models.ticket import Ticket
+
+    event_id = db.get(Ticket, ticket_id).event_id  # type: ignore[union-attr]
+
+    response = _replace(client, ticket_id, headers)
+
+    assert (response.status_code, response.json()["ticket_id"]) == (200, ticket_id)
+    assert face_provider.search(event_id, NEW_PHOTO, threshold=95).ticket_id == ticket_id  # type: ignore[union-attr]
+    assert face_provider.search(event_id, PHOTO, threshold=95) is None
+    [mine] = [t for t in client.get("/api/tickets/me", headers=headers).json() if t["id"] == ticket_id]
+    assert mine["enrolled"] is True
+
+
+def test_replace_errors(
+    client: TestClient,
+    db: Session,
+    make_user: MakeUser,
+    make_event: MakeEvent,
+    auth_headers: Headers,
+    face_provider: FakeFaceProvider,
+) -> None:
+    headers = auth_headers(make_user())
+    ticket_id = _valid_ticket(client, db, make_event, headers)
+
+    not_yet = _replace(client, ticket_id, headers)
+    assert (not_yet.status_code, not_yet.json()["detail"]) == (409, "ticket is not enrolled yet")
+
+    assert _enroll(client, ticket_id, headers).status_code == 201
+    assert _replace(client, ticket_id, auth_headers(make_user())).status_code == 404
+    assert _replace(client, ticket_id, headers, consent="false").status_code == 422
+    assert _replace(client, ticket_id, headers, body=b"not an image").status_code == 415
+
+    face_provider.set_quality(NEW_PHOTO, QualityResult((QualityIssue.MULTIPLE_FACES,)))
+    low = _replace(client, ticket_id, headers)
+    assert (low.status_code, low.json()["detail"]["issues"]) == (422, ["MULTIPLE_FACES"])

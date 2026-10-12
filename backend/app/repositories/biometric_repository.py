@@ -8,6 +8,12 @@ def get_by_ticket_id(db: Session, ticket_id: int) -> BiometricProfile | None:
     return db.scalars(select(BiometricProfile).where(BiometricProfile.ticket_id == ticket_id)).first()
 
 
+def get_by_ticket_id_for_update(db: Session, ticket_id: int) -> BiometricProfile | None:
+    """The ticket's face reference, row-locked until the transaction ends (SELECT ... FOR UPDATE)."""
+    query = select(BiometricProfile).where(BiometricProfile.ticket_id == ticket_id).with_for_update()
+    return db.scalars(query.execution_options(populate_existing=True)).first()
+
+
 def create(db: Session, profile: BiometricProfile) -> BiometricProfile:
     db.add(profile)
     db.flush()

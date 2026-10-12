@@ -20,7 +20,7 @@ vi.mock("../api/tickets");
 vi.mock("../api/adminEvents", () => ({ listAllEvents: vi.fn().mockResolvedValue([]) }));
 vi.mock("../hooks/useAdminFeed", () => ({ useAdminFeed: () => ({ status: "live", events: [] }) }));
 
-const DATA = new Set(["BioAccess", "EN", "עב", "Summer Concert", "Winter Gala", "Tel Aviv", "Dana Levi", "Tel Aviv ·", "·"]);
+const DATA = new Set(["BioAccess", "BioAccess · 2026", "EN", "עב", "Summer Concert", "Winter Gala", "Tel Aviv", "Dana Levi", "Tel Aviv ·", "·"]);
 
 function visibleTexts(root: HTMLElement): Set<string> {
   const texts = new Set<string>();

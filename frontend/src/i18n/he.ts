@@ -26,6 +26,10 @@ export const he: Record<TranslationKey, string> = {
   "ui.confirm.confirm": "אישור",
   "ui.confirm.cancel": "ביטול",
   "ui.modal.close": "סגירה",
+  // --- city picker
+  "city.placeholder": "התחילו להקליד עיר…",
+  "city.noMatch": "לא נמצאה עיר מתאימה",
+  "city.notListed": "בחרו עיר מהרשימה.",
   // --- date/time field
   "dt.openCalendar": "פתיחת לוח השנה",
   "dt.calendar": "בחירת תאריך",
@@ -320,6 +324,11 @@ export const he: Record<TranslationKey, string> = {
   "aevents.newTitle": "אירוע חדש",
   "aevents.field.name": "שם",
   "aevents.field.location": "מיקום",
+  "aevents.field.venue": "מקום האירוע",
+  "aevents.field.city": "עיר",
+  "aevents.venueRequired": "הזינו את מקום האירוע.",
+  "aevents.cityRequired": "בחרו עיר מהרשימה.",
+  "aevents.cityLegacy": "“{city}” אינה עיר מהרשימה. היא תישאר כפי שהיא, אלא אם תשנו את המקום או העיר.",
   "aevents.field.starts": "התחלה",
   "aevents.field.ends": "סיום",
   "aevents.field.capacity": "קיבולת",

@@ -5,6 +5,7 @@ import { apiErrorMessage } from "../../api/errors";
 import { fetchQrImage, myTickets, startCheckout } from "../../api/tickets";
 import type { MyTicket, TicketStatus } from "../../api/types";
 import { ErrorBox } from "../../components/ErrorBox";
+import { Place } from "../../components/Place";
 import { Spinner } from "../../components/Spinner";
 import { Modal } from "../../components/ui";
 import { formatDateTime, localeFor } from "../../format";
@@ -197,8 +198,9 @@ function TicketCard({ ticket, state, now, highlighted = false, onChanged }: { ti
 
         <div className="min-w-0 flex-1 p-4">
           <h3 className="text-lg font-semibold">{ticket.event.name}</h3>
-          <p className="text-sm text-slate-600">
-            <bdi>{ticket.event.location}</bdi> · <bdi>{formatDateTime(ticket.event.starts_at, lang)}</bdi>
+          <p className="flex flex-wrap gap-x-3 text-sm text-slate-600">
+            <Place location={ticket.event.location} />
+            <bdi>{formatDateTime(ticket.event.starts_at, lang)}</bdi>
           </p>
           <div className="mt-2 flex flex-wrap items-center gap-2">
             {gone ? (

@@ -6,6 +6,7 @@ import { listEvents } from "../../api/events";
 import { buyTicket, myTickets, startCheckout } from "../../api/tickets";
 import type { Event, MyTicket } from "../../api/types";
 import { ErrorBox } from "../../components/ErrorBox";
+import { Place } from "../../components/Place";
 import { Spinner } from "../../components/Spinner";
 import { formatDateTime, formatPrice } from "../../format";
 import { useLanguage } from "../../i18n/LanguageProvider";
@@ -87,7 +88,7 @@ function EventCard({ event, ticket, onChanged }: { event: Event; ticket: MyTicke
       )}
       <div className="flex flex-1 flex-col p-4">
         <h2 className="text-lg font-semibold">{event.name}</h2>
-        <p className="text-sm text-slate-600">{event.location}</p>
+        <p className="text-sm text-slate-600"><Place location={event.location} /></p>
         <p className="mt-1 text-sm text-slate-600">{formatDateTime(event.starts_at, lang)}</p>
         <p className="mt-2 font-medium">{formatPrice(event.price_cents, event.currency, lang)}</p>
         <div className="mt-auto pt-4">

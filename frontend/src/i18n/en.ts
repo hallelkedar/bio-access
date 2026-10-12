@@ -25,6 +25,10 @@ export const en = {
   "ui.confirm.confirm": "Confirm",
   "ui.confirm.cancel": "Cancel",
   "ui.modal.close": "Close",
+  // --- city picker
+  "city.placeholder": "Start typing a city…",
+  "city.noMatch": "No matching city",
+  "city.notListed": "Choose a city from the list.",
   // --- date/time field
   "dt.openCalendar": "Open calendar",
   "dt.calendar": "Choose a date",
@@ -319,6 +323,11 @@ export const en = {
   "aevents.newTitle": "New event",
   "aevents.field.name": "Name",
   "aevents.field.location": "Location",
+  "aevents.field.venue": "Venue",
+  "aevents.field.city": "City",
+  "aevents.venueRequired": "Enter the venue.",
+  "aevents.cityRequired": "Choose a city from the list.",
+  "aevents.cityLegacy": "“{city}” isn't a city from the list. It stays as it is unless you change the venue or city.",
   "aevents.field.starts": "Starts",
   "aevents.field.ends": "Ends",
   "aevents.field.capacity": "Capacity",

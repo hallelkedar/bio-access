@@ -4,10 +4,13 @@ import { createEvent, deleteEvent, listAllEvents, updateEvent, uploadCover, type
 import { apiErrorMessage } from "../../api/errors";
 import type { Event } from "../../api/types";
 import { ErrorBox } from "../../components/ErrorBox";
+import { CityCombobox } from "../../components/CityCombobox";
 import { FormField } from "../../components/FormField";
 import { Spinner } from "../../components/Spinner";
 import { Button, DateTimeField } from "../../components/ui";
 import { formatDateTime, formatPrice, localeFor, parsePriceToCents } from "../../format";
+import type { City } from "../../data/cities";
+import { composeLocation, findCity, splitLocation } from "../../data/cityMatch";
 import { useLanguage } from "../../i18n/LanguageProvider";
 import type { TranslationKey } from "../../i18n/en";
 import type { Lang } from "../../i18n/translate";
@@ -201,10 +204,28 @@ interface EventFormProps {
   onCancel: () => void;
 }
 
+/** An event's stored location as the form's two fields; an unlisted city leaves City empty. */
+function initialPlace(location: string | undefined): { venue: string; city: City | null; unmatched: string } {
+  if (!location) return { venue: "", city: null, unmatched: "" };
+  const { venue, cityText } = splitLocation(location);
+  if (!cityText) {
+    const whole = findCity(venue); // an old "Tel Aviv" is just a city
+    return whole ? { venue: "", city: whole, unmatched: "" } : { venue, city: null, unmatched: venue };
+  }
+  const city = findCity(cityText);
+  return { venue, city, unmatched: city ? "" : cityText };
+}
+
 function EventForm({ event, pendingCover, onSaved, onCoverChanged, onCreatedCoverFailed, onCancel }: EventFormProps) {
+  const [initial] = useState(() => initialPlace(event?.location));
+  const [venue, setVenue] = useState(initial.venue);
+  const [city, setCity] = useState<City | null>(initial.city);
+  const [placeErrors, setPlaceErrors] = useState<{ venue?: string; city?: string }>({});
+  // An old location the picker can't read is kept as it was until venue or city changes,
+  // so the API never sees it as a change (it only checks changed locations).
+  const placeTouched = venue !== initial.venue || city !== initial.city;
   const [form, setForm] = useState({
     name: event?.name ?? "",
-    location: event?.location ?? "",
     starts_at: event?.starts_at ?? null,
     ends_at: event?.ends_at ?? null,
     capacity: event ? String(event.capacity) : "",
@@ -232,9 +253,15 @@ function EventForm({ event, pendingCover, onSaved, onCoverChanged, onCreatedCove
     if (!startsAt || !endsAt) return setError(t("aevents.missingDates"));
     const problems = eventDateProblems(startsAt, endsAt, event === null, new Date()); // the clock at submit
     if (problems.starts || problems.ends) return setError(t(problems.starts ?? problems.ends!));
+    const keepLocation = event !== null && !placeTouched;
+    if (!keepLocation) {
+      const missing = { venue: venue.trim() ? undefined : t("aevents.venueRequired"), city: city ? undefined : t("aevents.cityRequired") };
+      setPlaceErrors(missing);
+      if (missing.venue || missing.city) return setError(missing.venue ?? missing.city!);
+    }
     const input: EventInput = {
       name: form.name.trim(),
-      location: form.location.trim(),
+      location: keepLocation ? event!.location : composeLocation(venue, city!),
       starts_at: startsAt,
       ends_at: endsAt,
       capacity,
@@ -245,7 +272,8 @@ function EventForm({ event, pendingCover, onSaved, onCoverChanged, onCreatedCove
     setError(null);
     try {
       if (event) {
-        await updateEvent(event.id, input);
+        const { location, ...rest } = input;
+        await updateEvent(event.id, keepLocation ? rest : { ...rest, location });
       } else {
         const created = await createEvent(input);
         if (newCover) {
@@ -269,7 +297,13 @@ function EventForm({ event, pendingCover, onSaved, onCoverChanged, onCreatedCove
       <h2 className="text-lg font-semibold">{event ? t("aevents.editTitle", { name: event.name }) : t("aevents.newTitle")}</h2>
       <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2" noValidate>
         <FormField label={t("aevents.field.name")} name="name" required value={form.name} onChange={set("name")} />
-        <FormField label={t("aevents.field.location")} name="location" required value={form.location} onChange={set("location")} />
+        <FormField label={t("aevents.field.venue")} name="venue" required maxLength={100} value={venue}
+          onChange={(e) => { setVenue(e.target.value); setPlaceErrors((p) => ({ ...p, venue: undefined })); }}
+          hint={placeErrors.venue} />
+        <CityCombobox label={t("aevents.field.city")} id="city" required value={city}
+          onChange={(next) => { setCity(next); setPlaceErrors((p) => ({ ...p, city: undefined })); }}
+          error={placeErrors.city}
+          hint={!city && initial.unmatched && !placeTouched ? t("aevents.cityLegacy", { city: initial.unmatched }) : null} />
         <DateTimeField label={t("aevents.field.starts")} name="starts_at" id="starts_at" required defaultTime="19:00"
           value={form.starts_at} onChange={setDate("starts_at")}
           min={event === null ? startOfToday().toISOString() : null}

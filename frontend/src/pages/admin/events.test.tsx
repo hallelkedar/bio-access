@@ -67,7 +67,9 @@ describe("EventsAdminPage", () => {
     await user.click(await screen.findByRole("button", { name: "New event" }));
 
     await user.type(screen.getByLabelText("Name"), "Winter Gala");
-    await user.type(screen.getByLabelText("Location"), "Jerusalem");
+    await user.type(screen.getByLabelText("Venue"), "Binyanei HaUma");
+    await user.type(screen.getByLabelText("City"), "jerus");
+    await user.click(screen.getByRole("option", { name: /Jerusalem/ }));
     await user.type(screen.getByLabelText("Starts"), "12/24/2026 19:00{Enter}");
     await user.type(screen.getByLabelText("Ends"), "12/24/2026 23:30{Enter}");
     await user.type(screen.getByLabelText("Capacity"), "250");
@@ -77,7 +79,7 @@ describe("EventsAdminPage", () => {
     await waitFor(() =>
       expect(admin.createEvent).toHaveBeenCalledWith({
         name: "Winter Gala",
-        location: "Jerusalem",
+        location: "Binyanei HaUma, Jerusalem",
         starts_at: fromLocalInput("2026-12-24T19:00"),
         ends_at: fromLocalInput("2026-12-24T23:30"),
         capacity: 250,
@@ -264,7 +266,8 @@ describe("EventsAdminPage: date fields", () => {
     const user = renderAdmin();
     await user.click(await screen.findByRole("button", { name: "New event" }));
     await user.type(screen.getByLabelText("Name"), "Demo");
-    await user.type(screen.getByLabelText("Location"), "Haifa");
+    await user.type(screen.getByLabelText("Venue"), "Port");
+    await user.type(screen.getByLabelText("City"), "Haifa{Enter}");
     await user.type(screen.getByLabelText("Capacity"), "10");
     await user.type(screen.getByLabelText("Price"), "0");
     return user;
@@ -358,6 +361,23 @@ describe("EventsAdminPage: date fields", () => {
     expect(admin.createEvent).toHaveBeenCalledOnce(); // no duplicate event
   });
 
+  it("a city that isn't on the list blocks saving", async () => {
+    const user = renderAdmin();
+    await user.click(await screen.findByRole("button", { name: "New event" }));
+    await user.type(screen.getByLabelText("Name"), "Demo");
+    await user.type(screen.getByLabelText("Venue"), "Hall");
+    await user.type(screen.getByLabelText("City"), "asdf");
+    await user.type(screen.getByLabelText("Capacity"), "10");
+    await user.type(screen.getByLabelText("Price"), "0");
+    await fillDates(user);
+
+    expect(screen.getByLabelText("City")).toHaveAccessibleDescription("Choose a city from the list.");
+    await user.click(screen.getByRole("button", { name: "Create event" }));
+
+    expect(admin.createEvent).not.toHaveBeenCalled();
+    expect(screen.getByRole("alert")).toHaveTextContent("Choose a city from the list.");
+  });
+
   it("fills the end from a duration chip and shows the time zone", async () => {
     const user = await newEvent();
     expect(screen.queryByRole("group", { name: "Duration" })).not.toBeInTheDocument();
@@ -371,3 +391,50 @@ describe("EventsAdminPage: date fields", () => {
     expect(screen.getByLabelText("Ends")).toHaveValue("10/20/2026 23:59");
   });
 });
+
+describe("EventsAdminPage: location of existing events", () => {
+  async function edit(location: string) {
+    admin.listAllEvents.mockResolvedValue([makeEvent({ id: 5, name: "Legacy", status: "DRAFT", location })]);
+    admin.updateEvent.mockResolvedValue(makeEvent({ id: 5 }));
+    const user = renderAdmin();
+    await user.click((await row("Legacy")).getByRole("button", { name: "Edit" }));
+    return user;
+  }
+
+  it("splits Venue and City from the stored value", async () => {
+    await edit("Hall 2, Expo, Tel Aviv");
+
+    expect(screen.getByLabelText("Venue")).toHaveValue("Hall 2, Expo");
+    expect(screen.getByLabelText("City")).toHaveValue("Tel Aviv");
+  });
+
+  it("an old location without a listed city is kept, and not sent, until changed", async () => {
+    const user = await edit("Here");
+    expect(screen.getByLabelText("Venue")).toHaveValue("Here");
+    expect(screen.getByLabelText("City")).toHaveAccessibleDescription(/“Here” isn't a city from the list/);
+
+    await user.clear(screen.getByLabelText("Capacity"));
+    await user.type(screen.getByLabelText("Capacity"), "20");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(admin.updateEvent).toHaveBeenCalled());
+    expect(admin.updateEvent.mock.calls[0]![1]).not.toHaveProperty("location");
+  });
+
+  it("choosing a city composes the new location", async () => {
+    const user = await edit("Here");
+
+    await user.type(screen.getByLabelText("City"), "Haifa{Enter}");
+    await user.click(screen.getByRole("button", { name: "Save changes" }));
+
+    await waitFor(() => expect(admin.updateEvent).toHaveBeenCalledWith(5, expect.objectContaining({ location: "Here, Haifa" })));
+  });
+
+  it("an old plain city name fills City", async () => {
+    await edit("Tel Aviv");
+
+    expect(screen.getByLabelText("Venue")).toHaveValue("");
+    expect(screen.getByLabelText("City")).toHaveValue("Tel Aviv");
+  });
+});
+

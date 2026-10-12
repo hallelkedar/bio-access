@@ -6,6 +6,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import * as eventsApi from "../../api/events";
 import * as ticketsApi from "../../api/tickets";
 import { ToastProvider } from "../../components/ui";
+import { LanguageProvider } from "../../i18n/LanguageProvider";
 import * as navigation from "../../navigation";
 import { httpError } from "../../test/factories";
 import { makeEvent, makeTicket } from "../../test/factories.events";
@@ -102,6 +103,18 @@ describe("EventsPage", () => {
     renderPage(<EventsPage />);
 
     expect((await card("Summer Concert")).queryByRole("button", { name: "Cancel ticket" })).not.toBeInTheDocument();
+  });
+
+  it("shows the venue and the city with a pin, the city in the reader's language", async () => {
+    localStorage.setItem("bioaccess.lang", "he");
+    events.listEvents.mockResolvedValue([makeEvent({ location: "Expo Tel Aviv, Tel Aviv" })]);
+    tickets.myTickets.mockResolvedValue([]);
+    render(<LanguageProvider><ToastProvider><RouterProvider router={createMemoryRouter([{ path: "*", element: <EventsPage /> }])} /></ToastProvider></LanguageProvider>);
+
+    const summer = await card("Summer Concert");
+    expect(summer.getByText("תל אביב-יפו")).toBeInTheDocument();
+    expect(summer.getByText("Expo Tel Aviv")).toBeInTheDocument();
+    localStorage.clear();
   });
 
   it("buy creates a ticket, opens checkout and redirects", async () => {

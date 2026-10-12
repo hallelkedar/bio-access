@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -290,6 +290,7 @@ describe("EnrollPage: changing the photo", () => {
     await captureAndUse(user);
 
     expect(await screen.findByText("Your new photo is set!")).toBeInTheDocument();
+    expect(screen.queryByTestId("confetti")).not.toBeInTheDocument(); // a calm finish when replacing
     expect(enrollment.replaceFace).toHaveBeenCalledWith(42, expect.any(Blob));
     expect(enrollment.enrollFace).not.toHaveBeenCalled();
   });
@@ -320,3 +321,42 @@ describe("EnrollPage: changing the photo", () => {
   });
 });
 
+
+describe("EnrollPage: step indicator", () => {
+  const steps = () => within(screen.getByRole("navigation", { name: "Enrollment progress" })).getAllByRole("listitem");
+  const current = () => steps().find((li) => li.getAttribute("aria-current") === "step")?.textContent;
+
+  it("walks Consent -> Photo -> Review -> Done, ticking finished steps", async () => {
+    enrollment.enrollFace.mockResolvedValue({ ticket_id: 42, enrolled_at: "2026-11-01T10:00:00Z" });
+    const user = renderPage();
+
+    await screen.findByRole("checkbox");
+    expect(current()).toContain("Consent");
+    expect(screen.getByText("Step 1 of 4")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("checkbox"));
+    await user.click(screen.getByRole("button", { name: "Continue" }));
+    expect(current()).toContain("Photo");
+    expect(steps()[0]).toHaveAttribute("data-state", "done");
+
+    const take = screen.getByRole("button", { name: "Take photo" });
+    await waitFor(() => expect(take).toBeEnabled());
+    await user.click(take);
+    await screen.findByRole("img", { name: "Your photo" });
+    expect(current()).toContain("Review");
+
+    await user.click(screen.getByRole("button", { name: "Use this photo" }));
+    await screen.findByText("Face entry is ready!");
+    expect(current()).toContain("Done");
+    expect(steps().map((li) => li.getAttribute("data-state"))).toEqual(["done", "done", "done", "done"]);
+    expect(screen.getByTestId("confetti")).toBeInTheDocument();
+  });
+
+  it("is not shown on a blocked ticket", async () => {
+    tickets.myTickets.mockResolvedValue([makeTicket("PENDING_PAYMENT")]);
+    renderPage();
+
+    await screen.findByText(/Only paid, unused tickets/);
+    expect(screen.queryByRole("navigation", { name: "Enrollment progress" })).not.toBeInTheDocument();
+  });
+});

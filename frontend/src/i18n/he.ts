@@ -243,6 +243,12 @@ export const he: Record<TranslationKey, string> = {
   "enroll.check.ok": "תקין",
   "enroll.check.notChecked": "לא נבדק בדפדפן הזה",
   "enroll.check.blocked": "התמונה הזו תידחה. צלמו שוב לפי ההנחיות למעלה.",
+  "enroll.step.label": "התקדמות ההרשמה",
+  "enroll.step.counter": "שלב {n} מתוך {total}",
+  "enroll.step.consent": "הסכמה",
+  "enroll.step.photo": "צילום",
+  "enroll.step.review": "בדיקה",
+  "enroll.step.done": "סיום",
   // --- gate
   "gate.title": "מסוף שער",
   "gate.loadingEvents": "טוענים אירועים…",

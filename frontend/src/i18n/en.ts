@@ -242,6 +242,12 @@ export const en = {
   "enroll.check.ok": "Good",
   "enroll.check.notChecked": "Not checked in this browser",
   "enroll.check.blocked": "This photo would be rejected. Retake it using the tips above.",
+  "enroll.step.label": "Enrollment progress",
+  "enroll.step.counter": "Step {n} of {total}",
+  "enroll.step.consent": "Consent",
+  "enroll.step.photo": "Photo",
+  "enroll.step.review": "Review",
+  "enroll.step.done": "Done",
   // --- gate
   "gate.title": "Gate terminal",
   "gate.loadingEvents": "Loading events…",

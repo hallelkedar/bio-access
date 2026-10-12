@@ -6,7 +6,7 @@ import { myTickets, refreshPayment, startCheckout } from "../../api/tickets";
 import type { TicketStatus } from "../../api/types";
 import { ErrorBox } from "../../components/ErrorBox";
 import { Spinner } from "../../components/Spinner";
-import { Button, ButtonLink, Card, Confetti } from "../../components/ui";
+import { Button, ButtonLink, Card, Confetti, ResultIcon } from "../../components/ui";
 import { useLanguage } from "../../i18n/LanguageProvider";
 import { redirectTo } from "../../navigation";
 
@@ -146,24 +146,5 @@ function ResultCard({ children }: { children: ReactNode }) {
     <section className="flex justify-center py-6 sm:py-10">
       <Card className="relative flex w-full max-w-md flex-col items-center px-6 py-10 text-center">{children}</Card>
     </section>
-  );
-}
-
-const TONES = {
-  ok: "bg-ok-50 text-ok-600",
-  warn: "bg-warn-50 text-warn-600",
-  neutral: "bg-surface-2 text-muted",
-} as const;
-
-/** A round badge with a stroked symbol that draws itself in. */
-function ResultIcon({ tone, path, circle = false }: { tone: keyof typeof TONES; path: string; circle?: boolean }) {
-  return (
-    <span className={`flex h-16 w-16 animate-pop-in items-center justify-center rounded-full ${TONES[tone]}`}>
-      <svg viewBox="0 0 52 52" className="h-10 w-10" fill="none" stroke="currentColor" strokeWidth="4"
-        strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        {circle && <circle cx="26" cy="26" r="17" strokeWidth="3" opacity="0.35" />}
-        <path pathLength={1} className="animate-draw [stroke-dasharray:1]" d={path} />
-      </svg>
-    </span>
   );
 }

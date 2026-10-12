@@ -2,7 +2,7 @@ import { AxiosError } from "axios";
 import { useEffect, useState } from "react";
 
 import { checkVideoFrame, hasHardFailure, type PhotoCheck, type PhotoIssue } from "../../enroll/photoChecks";
-import { Link, useParams, useSearchParams } from "react-router";
+import { useParams, useSearchParams } from "react-router";
 
 import { enrollFace, replaceFace, type QualityIssue } from "../../api/enrollment";
 import { apiErrorMessage } from "../../api/errors";
@@ -11,7 +11,7 @@ import type { MyTicket } from "../../api/types";
 import { Camera } from "../../components/Camera";
 import { ErrorBox } from "../../components/ErrorBox";
 import { Spinner } from "../../components/Spinner";
-import { ConfirmDialog } from "../../components/ui";
+import { Button, ButtonLink, Card, Confetti, ConfirmDialog, ResultIcon } from "../../components/ui";
 import { useCamera } from "../../hooks/useCamera";
 import { useLanguage } from "../../i18n/LanguageProvider";
 import type { TranslationKey } from "../../i18n/en";
@@ -62,6 +62,20 @@ const CLIENT_TIP: Record<PhotoIssue, TranslationKey> = {
 /** How often the live preview is checked. */
 const LIVE_CHECK_MS = 400;
 
+const STEPS: TranslationKey[] = ["enroll.step.consent", "enroll.step.photo", "enroll.step.review", "enroll.step.done"];
+
+/** Which stepper step a page step belongs to (null: no stepper while loading or blocked). */
+function stepIndex(step: Step): number | null {
+  switch (step.name) {
+    case "consent": return 0;
+    case "camera": return 1;
+    case "review":
+    case "uploading": return 2;
+    case "done": return 3;
+    default: return null;
+  }
+}
+
 export function EnrollPage() {
   const { t, lang } = useLanguage();
   const ticketId = Number(useParams().ticketId);
@@ -107,10 +121,12 @@ export function EnrollPage() {
     }
   }
 
+  const current = stepIndex(step);
   return (
     <section className="mx-auto max-w-2xl">
       <h1 className="text-2xl font-bold">{t(replacing ? "enroll.replaceTitle" : "enroll.title")}</h1>
-      {ticket && <p className="mt-1 text-slate-600">{ticket.event.name}</p>}
+      {ticket && <p className="mt-1 text-muted">{ticket.event.name}</p>}
+      {current !== null && <EnrollStepper current={current} />}
       <div className="mt-6">
         {step.name === "checking" && <Spinner />}
         {step.name === "blocked" && <Blocked message={step.message} replaceTo={step.canReplace ? `/enroll/${ticketId}?replace=1` : null} />}
@@ -133,18 +149,48 @@ export function EnrollPage() {
   );
 }
 
+/** Consent -> Photo -> Review -> Done, with a progress bar. Finished steps get a ✓. */
+function EnrollStepper({ current }: { current: number }) {
+  const { t } = useLanguage();
+  const last = STEPS.length - 1;
+  return (
+    <nav aria-label={t("enroll.step.label")} className="mt-5">
+      <p className="sr-only">{t("enroll.step.counter", { n: current + 1, total: STEPS.length })}</p>
+      <div aria-hidden="true" className="h-1.5 overflow-hidden rounded-full bg-surface-2">
+        <div className="h-full origin-left rounded-full bg-gradient-to-r from-brand-600 to-brand-400 transition-transform duration-500 ease-out motion-reduce:transition-none rtl:origin-right"
+          style={{ transform: `scaleX(${current / last})` }} />
+      </div>
+      <ol className="mt-3 grid grid-cols-4 gap-2">
+        {STEPS.map((key, i) => {
+          const state = i < current || current === last ? "done" : i === current ? "current" : "todo";
+          return (
+            <li key={key} data-step={key} data-state={state} aria-current={i === current ? "step" : undefined}
+              className="flex flex-col items-center gap-1 text-center sm:flex-row sm:gap-2 sm:text-start">
+              <span aria-hidden="true"
+                className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-colors duration-300 motion-reduce:transition-none ${
+                  state === "done" ? "bg-ok-500 text-white" : state === "current" ? "bg-brand-600 text-white ring-4 ring-brand-100" : "bg-surface-2 text-muted"
+                }`}>
+                {state === "done" ? "✓" : i + 1}
+              </span>
+              <span className={`text-xs sm:text-sm ${state === "current" ? "font-semibold text-text" : "text-muted"}`}>{t(key)}</span>
+            </li>
+          );
+        })}
+      </ol>
+    </nav>
+  );
+}
+
 function Blocked({ message, replaceTo }: { message: string; replaceTo: string | null }) {
   const { t } = useLanguage();
   return (
-    <div className="space-y-4">
+    <Card className="space-y-4 p-5">
       <p>{message}</p>
-      <div className="flex flex-wrap items-center gap-4">
-        {replaceTo && (
-          <Link to={replaceTo} className="rounded-md bg-slate-900 px-4 py-2 font-medium text-white hover:bg-slate-700">{t("enroll.changePhoto")}</Link>
-        )}
-        <Link to="/tickets" className="text-blue-700 underline">{t("enroll.backToTickets")}</Link>
+      <div className="flex flex-wrap items-center gap-3">
+        {replaceTo && <ButtonLink to={replaceTo} className="min-h-11">{t("enroll.changePhoto")}</ButtonLink>}
+        <ButtonLink to="/tickets" variant="secondary" className="min-h-11">{t("enroll.backToTickets")}</ButtonLink>
       </div>
-    </div>
+    </Card>
   );
 }
 
@@ -152,23 +198,21 @@ function Consent({ onAccept }: { onAccept: () => void }) {
   const { t } = useLanguage();
   const [agreed, setAgreed] = useState(false);
   return (
-    <div className="space-y-4 rounded-lg border border-slate-200 bg-white p-5">
+    <Card className="space-y-4 p-5">
       <h2 className="text-lg font-semibold">{t("enroll.consentTitle")}</h2>
-      <ul className="list-disc space-y-1 ps-5 text-sm text-slate-700">
+      <ul className="list-disc space-y-1 ps-5 text-sm text-muted">
         <li>{t("enroll.consentSent")}</li>
         <li>{t("enroll.consentNotStored")}</li>
         <li>{t("enroll.consentDeleted")}</li>
         <li>{t("enroll.consentQr")}</li>
       </ul>
-      <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)} />
+      <label className="flex min-h-11 cursor-pointer items-center gap-3 rounded-control px-1 text-sm">
+        <input type="checkbox" checked={agreed} onChange={(e) => setAgreed(e.target.checked)}
+          className="h-5 w-5 shrink-0 accent-brand-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500" />
         {t("enroll.consentAgree")}
       </label>
-      <button type="button" disabled={!agreed} onClick={onAccept}
-        className="rounded-md bg-slate-900 px-4 py-2 text-white disabled:opacity-50">
-        {t("enroll.continue")}
-      </button>
-    </div>
+      <Button disabled={!agreed} onClick={onAccept} className="min-h-11">{t("enroll.continue")}</Button>
+    </Card>
   );
 }
 
@@ -221,6 +265,7 @@ function CaptureStep({ tips, error, onCaptured }: { tips: string[]; error: strin
 
   const ok = live !== null && live.findings.length === 0;
   const oval = live === null ? "border-white/80" : ok ? "border-emerald-400" : "border-amber-400";
+  const corner = live === null ? "border-white/60" : ok ? "border-emerald-400" : "border-amber-400";
   return (
     <div className="space-y-4">
       {tips.length > 0 && (
@@ -235,7 +280,16 @@ function CaptureStep({ tips, error, onCaptured }: { tips: string[]; error: strin
       <Camera camera={camera}>
         {/* Face guide: turns green when the live checks pass */}
         <div aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className={`h-3/4 aspect-[3/4] rounded-[50%] border-4 transition-colors duration-300 shadow-[0_0_0_9999px_rgba(15,23,42,0.35)] ${oval}`} />
+          <div className="relative h-[85%] aspect-[5/6]">
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className={`h-[88%] aspect-[3/4] rounded-[50%] border-4 transition-colors duration-300 shadow-[0_0_0_9999px_rgba(15,23,42,0.35)] ${oval}`} />
+            </div>
+            {/* Viewfinder corners around the oval */}
+            {["start-0 top-0 border-s-4 border-t-4 rounded-ss-xl", "end-0 top-0 border-e-4 border-t-4 rounded-se-xl",
+              "start-0 bottom-0 border-s-4 border-b-4 rounded-es-xl", "end-0 bottom-0 border-e-4 border-b-4 rounded-ee-xl"].map((pos) => (
+              <span key={pos} className={`absolute h-6 w-6 transition-colors duration-300 ${pos} ${corner}`} />
+            ))}
+          </div>
         </div>
         {live && (
           <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center px-3">
@@ -243,11 +297,10 @@ function CaptureStep({ tips, error, onCaptured }: { tips: string[]; error: strin
           </div>
         )}
       </Camera>
-      <p className="text-sm text-slate-600">{t("enroll.captureHint")}</p>
-      <button type="button" onClick={() => void takePhoto()} disabled={camera.status !== "ready" || capturing}
-        className="rounded-md bg-slate-900 px-4 py-2 text-white disabled:opacity-50">
+      <p className="text-sm text-muted">{t("enroll.captureHint")}</p>
+      <Button onClick={() => void takePhoto()} disabled={camera.status !== "ready"} loading={capturing} size="lg" className="min-h-11 w-full sm:w-auto">
         {t("enroll.takePhoto")}
-      </button>
+      </Button>
       <ConfirmDialog
         open={warning !== null}
         title={t("enroll.warnTitle")}
@@ -299,7 +352,7 @@ const ROWS: Row[] = [
 function Checklist({ check }: { check: PhotoCheck }) {
   const { t } = useLanguage();
   return (
-    <ul aria-label={t("enroll.check.title")} className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white text-sm">
+    <ul aria-label={t("enroll.check.title")} className="divide-y divide-border rounded-card border border-border bg-surface text-sm shadow-card">
       {ROWS.map(({ key, issues }) => {
         const found = check.findings.filter((f) => issues.includes(f.issue));
         const notChecked = key === "enroll.check.face" && !check.faceChecked;
@@ -333,21 +386,15 @@ function Review({ photo, check, uploading, onRetake, onUse }: { photo: Blob; che
 
   return (
     <div className="space-y-4">
-      {url && <img src={url} alt={t("enroll.photoAlt")} className="w-full -scale-x-100 rounded-lg" />}
+      {url && <img src={url} alt={t("enroll.photoAlt")} className="w-full -scale-x-100 rounded-card shadow-card" />}
       {check && <Checklist check={check} />}
       {blocked && <p role="alert" className="text-sm font-medium text-deny-700">{t("enroll.check.blocked")}</p>}
       {uploading ? (
         <Spinner label={t("enroll.checking")} />
       ) : (
-        <div className="flex gap-3">
-          <button type="button" onClick={onUse} disabled={blocked}
-            className="rounded-md bg-slate-900 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-40">
-            {t("enroll.usePhoto")}
-          </button>
-          <button type="button" onClick={onRetake}
-            className={blocked ? "rounded-md bg-brand-600 px-4 py-2 font-medium text-white" : "rounded-md border px-4 py-2"}>
-            {t("enroll.retake")}
-          </button>
+        <div className="flex flex-col gap-3 sm:flex-row">
+          <Button onClick={onUse} disabled={blocked} className="min-h-11">{t("enroll.usePhoto")}</Button>
+          <Button onClick={onRetake} variant={blocked ? "primary" : "secondary"} className="min-h-11">{t("enroll.retake")}</Button>
         </div>
       )}
     </div>
@@ -357,10 +404,12 @@ function Review({ photo, check, uploading, onRetake, onUse }: { photo: Blob; che
 function Done({ replaced }: { replaced: boolean }) {
   const { t } = useLanguage();
   return (
-    <div className="space-y-4 text-center">
-      <p className="text-2xl font-bold text-emerald-700">{t(replaced ? "enroll.replaceDoneTitle" : "enroll.doneTitle")}</p>
-      <p className="text-slate-600">{t(replaced ? "enroll.replaceDoneBody" : "enroll.doneBody")}</p>
-      <Link to="/tickets" className="inline-block rounded-md bg-slate-900 px-4 py-2 text-white">{t("enroll.myTickets")}</Link>
-    </div>
+    <Card className="relative flex flex-col items-center px-6 py-10 text-center">
+      {!replaced && <Confetti />}
+      <ResultIcon tone="ok" path="M15 27l7 7 15-16" />
+      <p className="mt-5 text-2xl font-bold text-ok-700">{t(replaced ? "enroll.replaceDoneTitle" : "enroll.doneTitle")}</p>
+      <p className="mt-2 text-muted">{t(replaced ? "enroll.replaceDoneBody" : "enroll.doneBody")}</p>
+      <ButtonLink to="/tickets" className="mt-6 min-h-11">{t("enroll.myTickets")}</ButtonLink>
+    </Card>
   );
 }

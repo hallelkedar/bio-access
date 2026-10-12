@@ -8,6 +8,7 @@ export { DateTimeField } from "./DateTimeField";
 export { Drawer } from "./Drawer";
 export { EmptyState } from "./EmptyState";
 export { Modal } from "./Modal";
+export { ResultIcon } from "./ResultIcon";
 export { Reveal } from "./Reveal";
 export { RouteTransition } from "./RouteTransition";
 export { Skeleton, SkeletonTable, SkeletonText, SkeletonTiles } from "./Skeleton";

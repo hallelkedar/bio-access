@@ -127,3 +127,51 @@ describe("LanguageProvider", () => {
     expect(screen.getByText("Log in")).toBeInTheDocument();
   });
 });
+
+describe("smooth language switch", () => {
+  // jsdom has no View Transitions: install a fake that runs the update right away.
+  function installViewTransitions() {
+    const start = vi.fn((update: () => void) => {
+      update();
+      return {} as ViewTransition;
+    });
+    Object.defineProperty(document, "startViewTransition", { value: start, configurable: true });
+    return start;
+  }
+
+  afterEach(() => {
+    delete (document as { startViewTransition?: unknown }).startViewTransition;
+    vi.unstubAllGlobals();
+  });
+
+  it("switches inside a view transition, with the page already mirrored", () => {
+    const start = installViewTransitions();
+    const { result } = renderHook(() => useLanguage(), { wrapper });
+
+    act(() => result.current.setLang("he"));
+
+    expect(start).toHaveBeenCalledOnce();
+    expect(result.current.lang).toBe("he");
+    expect(document.documentElement.dir).toBe("rtl");
+  });
+
+  it("does not animate when the language is unchanged", () => {
+    const start = installViewTransitions();
+    const { result } = renderHook(() => useLanguage(), { wrapper });
+
+    act(() => result.current.setLang("en"));
+
+    expect(start).not.toHaveBeenCalled();
+  });
+
+  it("switches instantly under reduced motion", () => {
+    const start = installViewTransitions();
+    vi.stubGlobal("matchMedia", (query: string) => ({ matches: query.includes("reduce"), media: query }));
+    const { result } = renderHook(() => useLanguage(), { wrapper });
+
+    act(() => result.current.setLang("he"));
+
+    expect(start).not.toHaveBeenCalled();
+    expect(result.current.lang).toBe("he");
+  });
+});

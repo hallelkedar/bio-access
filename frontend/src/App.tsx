@@ -105,7 +105,7 @@ function Header() {
           ))}
         </div>
         <div className="ms-auto flex items-center gap-3 text-sm">
-          <LanguageToggle />
+          <LanguageToggle className="[view-transition-name:lang-toggle]" />
           {user ? (
             <>
               <span className="hidden items-center gap-2 text-slate-700 lg:flex">

@@ -1,4 +1,5 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useCallback, useContext, useLayoutEffect, useMemo, useState, type ReactNode } from "react";
+import { flushSync } from "react-dom";
 
 import type { TranslationKey } from "./en";
 import { dirOf, isLang, translate, type Lang, type TranslationVars } from "./translate";
@@ -32,19 +33,31 @@ function storeLang(lang: Lang): void {
   }
 }
 
+/** View Transitions exist (not in older browsers or jsdom) and the user did not ask for less motion. */
+function canAnimate(): boolean {
+  if (typeof document.startViewTransition !== "function") return false;
+  return !(typeof window.matchMedia === "function" && window.matchMedia("(prefers-reduced-motion: reduce)").matches);
+}
+
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const [lang, setLangState] = useState<Lang>(readStoredLang); // read once on startup
   const dir = dirOf(lang);
 
-  useEffect(() => {
+  // Layout effect: the page must already be mirrored when a view transition takes its snapshot.
+  useLayoutEffect(() => {
     document.documentElement.lang = lang;
     document.documentElement.dir = dir;
   }, [lang, dir]);
 
   const setLang = useCallback((next: Lang) => {
-    setLangState(next);
     storeLang(next);
-  }, []);
+    if (next === lang || !canAnimate()) {
+      setLangState(next);
+      return;
+    }
+    // Cross-fade the old layout into the mirrored one instead of jumping in one frame.
+    document.startViewTransition(() => flushSync(() => setLangState(next)));
+  }, [lang]);
 
   const t = useCallback((key: TranslationKey, vars?: TranslationVars) => translate(lang, key, vars), [lang]);
 

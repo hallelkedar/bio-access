@@ -300,6 +300,64 @@ describe("EventsAdminPage: date fields", () => {
     })));
   });
 
+  async function fillDates(user: ReturnType<typeof userEvent.setup>) {
+    await user.type(screen.getByLabelText("Starts"), "10/20/2026 19:00{Enter}");
+    await user.type(screen.getByLabelText("Ends"), "10/20/2026 22:00{Enter}");
+  }
+
+  it("a new event can get a cover: created first, then the cover uploaded to its id", async () => {
+    const created = makeEvent({ id: 9, name: "Demo" });
+    admin.createEvent.mockResolvedValue(created);
+    admin.uploadCover.mockResolvedValue({ ...created, cover_image_url: "/media/event-covers/9.png" });
+    const user = await newEvent();
+    await fillDates(user);
+    const file = new File(["png"], "stage.png", { type: "image/png" });
+
+    expect(screen.getByText("Uploaded when you create the event.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Upload cover" })).not.toBeInTheDocument();
+    await user.upload(screen.getByLabelText("Choose cover image"), file);
+    expect(screen.getByRole("img", { name: "Cover preview" })).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Create event" }));
+
+    await waitFor(() => expect(admin.uploadCover).toHaveBeenCalledWith(9, file));
+    expect(admin.createEvent.mock.invocationCallOrder[0]).toBeLessThan(admin.uploadCover.mock.invocationCallOrder[0]!);
+    await waitFor(() => expect(screen.queryByRole("button", { name: "Create event" })).not.toBeInTheDocument()); // form closed
+  });
+
+  it("creating without a cover uploads nothing", async () => {
+    admin.createEvent.mockResolvedValue(makeEvent({ id: 9 }));
+    const user = await newEvent();
+    await fillDates(user);
+
+    await user.click(screen.getByRole("button", { name: "Create event" }));
+
+    await waitFor(() => expect(admin.createEvent).toHaveBeenCalledOnce());
+    expect(admin.uploadCover).not.toHaveBeenCalled();
+  });
+
+  it("if only the cover fails, it switches to editing the new event with the file kept for a retry", async () => {
+    const created = makeEvent({ id: 9, name: "Demo" });
+    admin.createEvent.mockResolvedValue(created);
+    admin.uploadCover.mockRejectedValueOnce(httpError(413, "too large")).mockResolvedValueOnce({ ...created, cover_image_url: "/c.png" });
+    const user = await newEvent();
+    await fillDates(user);
+    const file = new File(["png"], "stage.png", { type: "image/png" });
+    await user.upload(screen.getByLabelText("Choose cover image"), file);
+
+    await user.click(screen.getByRole("button", { name: "Create event" }));
+
+    expect(await screen.findByRole("heading", { name: /Demo/ })).toBeInTheDocument(); // the edit form
+    expect(screen.getByRole("alert")).toHaveTextContent("Event created, but the cover couldn't be uploaded: The image is too large (max 2 MB).");
+    expect(screen.getByText("stage.png")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save changes" })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Upload cover" }));
+
+    await waitFor(() => expect(admin.uploadCover).toHaveBeenLastCalledWith(9, file));
+    expect(await screen.findByText("Cover saved ✓")).toBeInTheDocument();
+    expect(admin.createEvent).toHaveBeenCalledOnce(); // no duplicate event
+  });
+
   it("fills the end from a duration chip and shows the time zone", async () => {
     const user = await newEvent();
     expect(screen.queryByRole("group", { name: "Duration" })).not.toBeInTheDocument();

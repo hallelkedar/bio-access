@@ -18,7 +18,8 @@ const STATUS_STYLE: Record<Event["status"], string> = {
   CLOSED: "bg-slate-200 text-slate-500",
 };
 
-type Editing = { mode: "new" } | { mode: "edit"; event: Event } | null;
+/** `cover`: the event was created but its cover upload failed; the editor offers a retry. */
+type Editing = { mode: "new" } | { mode: "edit"; event: Event; cover?: { file: File; error: string } } | null;
 
 export function EventsAdminPage() {
   const [events, setEvents] = useState<Event[] | null>(null);
@@ -56,8 +57,13 @@ export function EventsAdminPage() {
         <EventForm
           key={editing.mode === "edit" ? editing.event.id : "new"}
           event={editing.mode === "edit" ? editing.event : null}
+          pendingCover={editing.mode === "edit" ? editing.cover : undefined}
           onSaved={saved}
           onCoverChanged={() => void load()}
+          onCreatedCoverFailed={(created, file, message) => {
+            setEditing({ mode: "edit", event: created, cover: { file, error: message } });
+            void load();
+          }}
           onCancel={() => setEditing(null)}
         />
       )}
@@ -185,7 +191,17 @@ function timeZoneName(lang: Lang): string {
   return offset ? `${zone} (${offset})` : zone;
 }
 
-function EventForm({ event, onSaved, onCoverChanged, onCancel }: { event: Event | null; onSaved: () => void; onCoverChanged: () => void; onCancel: () => void }) {
+interface EventFormProps {
+  event: Event | null;
+  pendingCover?: { file: File; error: string };
+  onSaved: () => void;
+  onCoverChanged: () => void;
+  /** Create succeeded but the cover didn't: switch to editing the new event (no duplicate on retry). */
+  onCreatedCoverFailed: (created: Event, file: File, message: string) => void;
+  onCancel: () => void;
+}
+
+function EventForm({ event, pendingCover, onSaved, onCoverChanged, onCreatedCoverFailed, onCancel }: EventFormProps) {
   const [form, setForm] = useState({
     name: event?.name ?? "",
     location: event?.location ?? "",
@@ -197,6 +213,7 @@ function EventForm({ event, onSaved, onCoverChanged, onCancel }: { event: Event 
   });
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  const [newCover, setNewCover] = useState<File | null>(null); // New event: uploaded right after create
   const { t, lang } = useLanguage();
 
   const set = (field: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [field]: e.target.value });
@@ -227,8 +244,19 @@ function EventForm({ event, onSaved, onCoverChanged, onCancel }: { event: Event 
     setSaving(true);
     setError(null);
     try {
-      if (event) await updateEvent(event.id, input);
-      else await createEvent(input);
+      if (event) {
+        await updateEvent(event.id, input);
+      } else {
+        const created = await createEvent(input);
+        if (newCover) {
+          try {
+            await uploadCover(created.id, newCover);
+          } catch (err) {
+            const reason = apiErrorMessage(err, { 413: t("aevents.coverTooLarge"), 415: t("aevents.coverBadType") }, lang);
+            return onCreatedCoverFailed(created, newCover, t("aevents.coverAfterCreateFailed", { reason }));
+          }
+        }
+      }
       onSaved();
     } catch (err) {
       setError(apiErrorMessage(err, {}, lang));
@@ -270,6 +298,14 @@ function EventForm({ event, onSaved, onCoverChanged, onCancel }: { event: Event 
           <FormField label={t("aevents.field.price")} name="price" inputMode="decimal" placeholder="50.00" required value={form.price} onChange={set("price")} />
           <FormField label={t("aevents.field.currency")} name="currency" maxLength={3} required value={form.currency} onChange={set("currency")} />
         </div>
+        <div className="sm:col-span-2">
+          {/* Above Save/Create, so a new event's picture is chosen before it is created */}
+          {event ? (
+            <CoverUpload event={event} onUploaded={onCoverChanged} initialFile={pendingCover?.file} initialError={pendingCover?.error} />
+          ) : (
+            <CoverUpload event={null} onPendingChange={setNewCover} />
+          )}
+        </div>
         <div className="sm:col-span-2"><ErrorBox message={error} /></div>
         <div className="flex gap-3 sm:col-span-2">
           <button type="submit" disabled={saving} className="rounded-md bg-slate-900 px-4 py-2 text-white disabled:opacity-50">
@@ -278,7 +314,6 @@ function EventForm({ event, onSaved, onCoverChanged, onCancel }: { event: Event 
           <button type="button" onClick={onCancel} className="rounded-md border px-4 py-2">{t("aevents.cancel")}</button>
         </div>
       </form>
-      {event && <CoverUpload event={event} onUploaded={onCoverChanged} />}
     </div>
   );
 }
@@ -301,16 +336,27 @@ function formatFileSize(bytes: number, lang: Lang): string {
  * keyboard target (Enter or Space), since browsers differ on opening a focused file input.
  * Files can be dragged onto it too.
  */
-function CoverUpload({ event, onUploaded }: { event: Event; onUploaded: () => void }) {
+type CoverUploadProps =
+  | { event: Event; onUploaded: () => void; initialFile?: File; initialError?: string }
+  /** New event: no id yet, so the parent holds the file and uploads it after creating. */
+  | { event: null; onPendingChange: (file: File | null) => void };
+
+function CoverUpload(props: CoverUploadProps) {
+  const { event } = props;
   const inputId = useId();
   const input = useRef<HTMLInputElement>(null);
-  const [file, setFile] = useState<File | null>(null);
+  const [file, setFileState] = useState<File | null>(event ? props.initialFile ?? null : null);
   const [preview, setPreview] = useState<string | null>(null);
   const [savedUrl, setSavedUrl] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(event ? props.initialError ?? null : null);
   const [uploading, setUploading] = useState(false);
   const [dragging, setDragging] = useState(false);
   const { t, lang } = useLanguage();
+
+  function setFile(next: File | null) {
+    setFileState(next);
+    if (!props.event) props.onPendingChange(next);
+  }
 
   useEffect(() => {
     if (!file) return setPreview(null);
@@ -329,14 +375,14 @@ function CoverUpload({ event, onUploaded }: { event: Event; onUploaded: () => vo
   }
 
   async function upload() {
-    if (!file) return;
+    if (!file || !props.event) return;
     setUploading(true);
     setError(null);
     try {
-      const updated = await uploadCover(event.id, file);
+      const updated = await uploadCover(props.event.id, file);
       setSavedUrl(updated.cover_image_url ?? preview);
       setFile(null);
-      onUploaded();
+      props.onUploaded();
     } catch (err) {
       setError(apiErrorMessage(err, { 413: t("aevents.coverTooLarge"), 415: t("aevents.coverBadType") }, lang));
     } finally {
@@ -344,7 +390,7 @@ function CoverUpload({ event, onUploaded }: { event: Event; onUploaded: () => vo
     }
   }
 
-  const shown = preview ?? savedUrl ?? event.cover_image_url;
+  const shown = preview ?? savedUrl ?? event?.cover_image_url;
   return (
     <div className="space-y-3 border-t border-slate-100 pt-4">
       <h3 className="font-medium">{t("aevents.coverTitle")}</h3>
@@ -400,9 +446,13 @@ function CoverUpload({ event, onUploaded }: { event: Event; onUploaded: () => vo
           </>
         )}
         {savedUrl && !file && <span role="status" className="font-medium text-emerald-700">{t("aevents.coverSaved")}</span>}
-        <Button variant="secondary" size="sm" className="ms-auto" onClick={() => void upload()} disabled={!file} loading={uploading}>
-          {uploading ? t("aevents.uploading") : t("aevents.upload")}
-        </Button>
+        {event ? (
+          <Button variant="secondary" size="sm" className="ms-auto" onClick={() => void upload()} disabled={!file} loading={uploading}>
+            {uploading ? t("aevents.uploading") : t("aevents.upload")}
+          </Button>
+        ) : (
+          <span className="ms-auto text-xs text-slate-500">{t("aevents.coverOnCreate")}</span>
+        )}
       </div>
       <ErrorBox message={error} />
     </div>

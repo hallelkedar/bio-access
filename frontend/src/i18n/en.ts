@@ -300,6 +300,8 @@ export const en = {
   "aevents.upload": "Upload cover",
   "aevents.coverTooLarge": "The image is too large (max 2 MB).",
   "aevents.coverBadType": "Use a real JPEG, PNG or WebP image.",
+  "aevents.coverOnCreate": "Uploaded when you create the event.",
+  "aevents.coverAfterCreateFailed": "Event created, but the cover couldn't be uploaded: {reason}",
   "aevents.coverDrop": "Click to choose an image, or drag it here",
   "aevents.coverReplace": "Click or drop an image to replace",
   "aevents.coverHint": "JPEG, PNG or WebP · up to 2 MB",

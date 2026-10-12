@@ -10,7 +10,9 @@ import { REASON_LABEL, reasonLabel } from "../../components/charts/chartMath";
 import { ErrorBox } from "../../components/ErrorBox";
 import { Pagination } from "../../components/Pagination";
 import { Spinner } from "../../components/Spinner";
-import { formatDateTime, fromLocalInput } from "../../format";
+import { DateTimeField } from "../../components/ui";
+import { formatDateTime, fromLocalInput, toLocalInput } from "../../format";
+import type { TranslationKey } from "../../i18n/en";
 import { useLanguage } from "../../i18n/LanguageProvider";
 
 export const PAGE_SIZE = 50;
@@ -37,6 +39,12 @@ export function filtersFromParams(params: URLSearchParams): { filters: LogFilter
   const error = filters.from && filters.to && filters.from >= filters.to ? "'From' must be before 'To'." : null;
   return { filters, error };
 }
+
+const PRESETS: { key: TranslationKey; from: (now: Date) => Date }[] = [
+  { key: "logs.preset.today", from: (now) => new Date(now.getFullYear(), now.getMonth(), now.getDate()) },
+  { key: "logs.preset.24h", from: (now) => new Date(now.getTime() - 24 * 60 * 60_000) },
+  { key: "logs.preset.7d", from: (now) => new Date(now.getTime() - 7 * 24 * 60 * 60_000) },
+];
 
 export function LogsPage() {
   const [params, setParams] = useSearchParams();
@@ -68,6 +76,15 @@ export function LogsPage() {
     const next = new URLSearchParams(params);
     if (value) next.set(key, value);
     else next.delete(key);
+    next.delete("page");
+    setParams(next);
+  }
+
+  /** Quick ranges: set From (and clear To) in one URL update. */
+  function applyPreset(from: Date) {
+    const next = new URLSearchParams(params);
+    next.set("from", toLocalInput(from.toISOString()));
+    next.delete("to");
     next.delete("page");
     setParams(next);
   }
@@ -111,12 +128,23 @@ export function LogsPage() {
           <input className={select} value={params.get("gate_id") ?? ""} maxLength={64} placeholder="north-1"
             onChange={(e) => setFilter("gate_id", e.target.value)} />
         </label>
-        <label className="text-sm">{t("logs.from")}<br />
-          <input type="datetime-local" className={select} value={params.get("from") ?? ""} onChange={(e) => setFilter("from", e.target.value)} />
-        </label>
-        <label className="text-sm">{t("logs.to")}<br />
-          <input type="datetime-local" className={select} value={params.get("to") ?? ""} onChange={(e) => setFilter("to", e.target.value)} />
-        </label>
+        {/* The URL keeps local "YYYY-MM-DDTHH:mm" (bookmarks keep working); the field speaks UTC ISO. */}
+        <div className="w-60">
+          <DateTimeField label={t("logs.from")} id="logs-from" value={fromLocalInput(params.get("from") ?? "")}
+            onChange={(iso) => setFilter("from", iso ? toLocalInput(iso) : "")} />
+        </div>
+        <div className="w-60">
+          <DateTimeField label={t("logs.to")} id="logs-to" defaultTime="23:59" value={fromLocalInput(params.get("to") ?? "")}
+            onChange={(iso) => setFilter("to", iso ? toLocalInput(iso) : "")} />
+        </div>
+        <div className="flex flex-wrap gap-1.5 pb-1" role="group" aria-label={t("logs.presets")}>
+          {PRESETS.map(({ key, from }) => (
+            <button key={key} type="button" onClick={() => applyPreset(from(new Date()))}
+              className="rounded-full border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-brand-400 hover:bg-brand-50">
+              {t(key)}
+            </button>
+          ))}
+        </div>
         <button type="button" onClick={() => setParams(new URLSearchParams())} className="rounded-md border px-3 py-1.5 text-sm">
           {t("logs.clear")}
         </button>

@@ -8,7 +8,7 @@ import { fromLocalInput } from "../../format";
 import { httpError } from "../../test/factories";
 import { makeEvent } from "../../test/factories.events";
 import { AdminLayout } from "./AdminLayout";
-import { EventsAdminPage } from "./EventsAdminPage";
+import { eventDateProblems, EventsAdminPage, START_GRACE_MS } from "./EventsAdminPage";
 
 vi.mock("../../api/adminEvents");
 const admin = vi.mocked(adminApi);
@@ -26,6 +26,7 @@ beforeEach(() => {
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 function renderAdmin(path = "/admin/events") {
@@ -59,14 +60,16 @@ describe("EventsAdminPage", () => {
   });
 
   it("creates an event with cents and UTC times", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); // "today" is before the event, whatever the real date
+    vi.setSystemTime(new Date(2026, 9, 12, 10, 0));
     admin.createEvent.mockResolvedValue(makeEvent({ id: 9 }));
     const user = renderAdmin();
     await user.click(await screen.findByRole("button", { name: "New event" }));
 
     await user.type(screen.getByLabelText("Name"), "Winter Gala");
     await user.type(screen.getByLabelText("Location"), "Jerusalem");
-    fireEvent.change(screen.getByLabelText("Starts"), { target: { value: "2026-12-24T19:00" } });
-    fireEvent.change(screen.getByLabelText("Ends"), { target: { value: "2026-12-24T23:30" } });
+    await user.type(screen.getByLabelText("Starts"), "12/24/2026 19:00{Enter}");
+    await user.type(screen.getByLabelText("Ends"), "12/24/2026 23:30{Enter}");
     await user.type(screen.getByLabelText("Capacity"), "250");
     await user.type(screen.getByLabelText("Price"), "49.90");
     await user.click(screen.getByRole("button", { name: "Create event" }));
@@ -226,5 +229,87 @@ describe("EventsAdminPage", () => {
       expect(screen.queryByText("cover.png")).not.toBeInTheDocument();
       expect(screen.getByRole("button", { name: "Upload cover" })).toBeDisabled();
     });
+  });
+});
+
+describe("eventDateProblems", () => {
+  const now = new Date(2026, 9, 12, 10, 0);
+  const ago = (ms: number) => new Date(now.getTime() - ms).toISOString();
+  const later = (hours: number) => new Date(now.getTime() + hours * 3_600_000).toISOString();
+
+  it("accepts a new event starting 2 minutes ago and exactly at the grace limit", () => {
+    expect(eventDateProblems(ago(2 * 60_000), later(2), true, now)).toEqual({});
+    expect(eventDateProblems(ago(START_GRACE_MS), later(2), true, now)).toEqual({});
+  });
+
+  it("rejects a new event starting 10 minutes ago, but lets an edited event keep past dates", () => {
+    expect(eventDateProblems(ago(10 * 60_000), later(2), true, now)).toEqual({ starts: "aevents.startInPast" });
+    expect(eventDateProblems(ago(10 * 60_000), later(2), false, now)).toEqual({});
+  });
+
+  it("requires the end after the start (equal is not enough)", () => {
+    expect(eventDateProblems(later(3), later(2), true, now)).toEqual({ ends: "aevents.endBeforeStart" });
+    expect(eventDateProblems(later(2), later(2), true, now)).toEqual({ ends: "aevents.endBeforeStart" });
+    expect(eventDateProblems(null, later(2), true, now)).toEqual({});
+  });
+});
+
+describe("EventsAdminPage: date fields", () => {
+  beforeEach(() => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 12, 10, 0)); // 12 Oct 2026, 10:00
+  });
+
+  async function newEvent() {
+    const user = renderAdmin();
+    await user.click(await screen.findByRole("button", { name: "New event" }));
+    await user.type(screen.getByLabelText("Name"), "Demo");
+    await user.type(screen.getByLabelText("Location"), "Haifa");
+    await user.type(screen.getByLabelText("Capacity"), "10");
+    await user.type(screen.getByLabelText("Price"), "0");
+    return user;
+  }
+
+  it("says at once when the end is before the start, and blocks saving", async () => {
+    const user = await newEvent();
+    await user.type(screen.getByLabelText("Starts"), "10/20/2026 19:00{Enter}");
+    await user.type(screen.getByLabelText("Ends"), "10/20/2026 18:00{Enter}");
+
+    expect(screen.getByLabelText("Ends")).toHaveAccessibleDescription("End must be after start.");
+    await user.click(screen.getByRole("button", { name: "Create event" }));
+    expect(admin.createEvent).not.toHaveBeenCalled();
+  });
+
+  it("rejects a start 10 minutes ago and accepts one 2 minutes ago (live demo)", async () => {
+    admin.createEvent.mockResolvedValue(makeEvent({ id: 9 }));
+    const user = await newEvent();
+    const starts = screen.getByLabelText("Starts");
+
+    await user.type(starts, "10/12/2026 09:50{Enter}");
+    expect(starts).toHaveAccessibleDescription("A new event can't start in the past.");
+
+    await user.clear(starts);
+    await user.type(starts, "10/12/2026 09:58{Enter}");
+    expect(starts).not.toHaveAccessibleDescription();
+    await user.type(screen.getByLabelText("Ends"), "10/12/2026 12:00{Enter}");
+    await user.click(screen.getByRole("button", { name: "Create event" }));
+
+    await waitFor(() => expect(admin.createEvent).toHaveBeenCalledWith(expect.objectContaining({
+      starts_at: fromLocalInput("2026-10-12T09:58"),
+      ends_at: fromLocalInput("2026-10-12T12:00"),
+    })));
+  });
+
+  it("fills the end from a duration chip and shows the time zone", async () => {
+    const user = await newEvent();
+    expect(screen.queryByRole("group", { name: "Duration" })).not.toBeInTheDocument();
+    expect(screen.getByText("Times are in")).toHaveTextContent(/^Times are in \S+/); // e.g. "Asia/Jerusalem (GMT+3)"
+
+    await user.type(screen.getByLabelText("Starts"), "10/20/2026 19:00{Enter}");
+    await user.click(screen.getByRole("button", { name: "2h" }));
+    expect(screen.getByLabelText("Ends")).toHaveValue("10/20/2026 21:00");
+
+    await user.click(screen.getByRole("button", { name: "Until end of day" }));
+    expect(screen.getByLabelText("Ends")).toHaveValue("10/20/2026 23:59");
   });
 });

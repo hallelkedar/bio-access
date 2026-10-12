@@ -78,19 +78,38 @@ describe("LogsPage", () => {
   });
 
   it("sends the time range in UTC and blocks from ≥ to", async () => {
-    renderAt(<LogsPage />);
+    const { user } = renderAt(<LogsPage />);
     await screen.findByRole("table");
 
-    fireEvent.change(screen.getByLabelText("From"), { target: { value: "2026-12-01T20:00" } });
+    await user.type(screen.getByLabelText("From"), "12/01/2026 20:00{Enter}");
     await waitFor(() =>
       expect(admin.listLogs).toHaveBeenLastCalledWith(expect.objectContaining({ from: fromLocalInput("2026-12-01T20:00") })),
     );
     const calls = admin.listLogs.mock.calls.length;
 
-    fireEvent.change(screen.getByLabelText("To"), { target: { value: "2026-12-01T19:00" } });
+    await user.type(screen.getByLabelText("To"), "12/01/2026 19:00{Enter}");
 
     expect(await screen.findByRole("alert")).toHaveTextContent("'From' must be before 'To'.");
     expect(admin.listLogs).toHaveBeenCalledTimes(calls);
+  });
+
+  it("quick ranges set From and clear To", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 9, 12, 10, 0));
+    const { user, router } = renderAt(<LogsPage />, "/?to=2026-12-01T19:00");
+    await screen.findByRole("table");
+
+    await user.click(screen.getByRole("button", { name: "Last 24h" }));
+
+    await waitFor(() =>
+      expect(admin.listLogs).toHaveBeenLastCalledWith(expect.objectContaining({ from: new Date(2026, 9, 11, 10, 0).toISOString(), to: undefined })),
+    );
+    expect(router.state.location.search).toBe("?from=2026-10-11T10%3A00");
+    expect(screen.getByLabelText("From")).toHaveValue("10/11/2026 10:00");
+
+    await user.click(screen.getByRole("button", { name: "Today" }));
+    expect(screen.getByLabelText("From")).toHaveValue("10/12/2026 00:00");
+    vi.useRealTimers();
   });
 
   it("pages through results", async () => {

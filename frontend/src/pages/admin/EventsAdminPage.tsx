@@ -6,9 +6,10 @@ import type { Event } from "../../api/types";
 import { ErrorBox } from "../../components/ErrorBox";
 import { FormField } from "../../components/FormField";
 import { Spinner } from "../../components/Spinner";
-import { Button } from "../../components/ui";
-import { formatDateTime, formatPrice, fromLocalInput, localeFor, parsePriceToCents, toLocalInput } from "../../format";
+import { Button, DateTimeField } from "../../components/ui";
+import { formatDateTime, formatPrice, localeFor, parsePriceToCents } from "../../format";
 import { useLanguage } from "../../i18n/LanguageProvider";
+import type { TranslationKey } from "../../i18n/en";
 import type { Lang } from "../../i18n/translate";
 
 const STATUS_STYLE: Record<Event["status"], string> = {
@@ -146,12 +147,50 @@ function EventRow({ event, onEdit, onChanged }: { event: Event; onEdit: () => vo
   );
 }
 
+/** How far in the past a new event may start: "starting now" must work for the live demo. */
+export const START_GRACE_MS = 5 * 60_000;
+
+/**
+ * Date rules for the event form (translation keys, or nothing). A new event can't start in
+ * the past (with the grace window); an edited one keeps its dates. The end must be after
+ * the start, like the database check ck_events_ends_after_starts.
+ */
+export function eventDateProblems(startsAt: string | null, endsAt: string | null, creating: boolean, now: Date) {
+  const problems: { starts?: TranslationKey; ends?: TranslationKey } = {};
+  if (creating && startsAt && new Date(startsAt).getTime() < now.getTime() - START_GRACE_MS) problems.starts = "aevents.startInPast";
+  if (startsAt && endsAt && new Date(endsAt) <= new Date(startsAt)) problems.ends = "aevents.endBeforeStart";
+  return problems;
+}
+
+function startOfDay(date: Date): Date {
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate());
+}
+
+function startOfToday(): Date {
+  return startOfDay(new Date());
+}
+
+const DURATIONS: { key: TranslationKey; end: (start: Date) => Date }[] = [
+  { key: "aevents.duration.1h", end: (start) => new Date(start.getTime() + 60 * 60_000) },
+  { key: "aevents.duration.2h", end: (start) => new Date(start.getTime() + 2 * 60 * 60_000) },
+  { key: "aevents.duration.3h", end: (start) => new Date(start.getTime() + 3 * 60 * 60_000) },
+  { key: "aevents.duration.allDay", end: (start) => new Date(start.getFullYear(), start.getMonth(), start.getDate(), 23, 59) },
+];
+
+/** "Asia/Jerusalem (GMT+2)": where the typed times live. */
+function timeZoneName(lang: Lang): string {
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const offset = new Intl.DateTimeFormat(localeFor(lang), { timeZoneName: "shortOffset" })
+    .formatToParts(new Date()).find((part) => part.type === "timeZoneName")?.value;
+  return offset ? `${zone} (${offset})` : zone;
+}
+
 function EventForm({ event, onSaved, onCoverChanged, onCancel }: { event: Event | null; onSaved: () => void; onCoverChanged: () => void; onCancel: () => void }) {
   const [form, setForm] = useState({
     name: event?.name ?? "",
     location: event?.location ?? "",
-    starts_at: event ? toLocalInput(event.starts_at) : "",
-    ends_at: event ? toLocalInput(event.ends_at) : "",
+    starts_at: event?.starts_at ?? null,
+    ends_at: event?.ends_at ?? null,
     capacity: event ? String(event.capacity) : "",
     price: event ? (event.price_cents / 100).toFixed(2) : "",
     currency: event?.currency ?? "ILS",
@@ -161,6 +200,9 @@ function EventForm({ event, onSaved, onCoverChanged, onCancel }: { event: Event 
   const { t, lang } = useLanguage();
 
   const set = (field: keyof typeof form) => (e: { target: { value: string } }) => setForm({ ...form, [field]: e.target.value });
+  const setDate = (field: "starts_at" | "ends_at") => (value: string | null) => setForm((f) => ({ ...f, [field]: value }));
+  // Checked on every render against the current clock, so the inline messages stay honest.
+  const dateProblems = eventDateProblems(form.starts_at, form.ends_at, event === null, new Date());
 
   async function submit(e: FormEvent) {
     e.preventDefault();
@@ -168,9 +210,11 @@ function EventForm({ event, onSaved, onCoverChanged, onCancel }: { event: Event 
     const capacity = Number(form.capacity);
     if (priceCents === null) return setError(t("aevents.badPrice"));
     if (!Number.isInteger(capacity) || capacity < 1) return setError(t("aevents.badCapacity"));
-    const startsAt = fromLocalInput(form.starts_at);
-    const endsAt = fromLocalInput(form.ends_at);
+    const startsAt = form.starts_at;
+    const endsAt = form.ends_at;
     if (!startsAt || !endsAt) return setError(t("aevents.missingDates"));
+    const problems = eventDateProblems(startsAt, endsAt, event === null, new Date()); // the clock at submit
+    if (problems.starts || problems.ends) return setError(t(problems.starts ?? problems.ends!));
     const input: EventInput = {
       name: form.name.trim(),
       location: form.location.trim(),
@@ -198,8 +242,29 @@ function EventForm({ event, onSaved, onCoverChanged, onCancel }: { event: Event 
       <form onSubmit={submit} className="grid gap-4 sm:grid-cols-2" noValidate>
         <FormField label={t("aevents.field.name")} name="name" required value={form.name} onChange={set("name")} />
         <FormField label={t("aevents.field.location")} name="location" required value={form.location} onChange={set("location")} />
-        <FormField label={t("aevents.field.starts")} name="starts_at" type="datetime-local" required value={form.starts_at} onChange={set("starts_at")} />
-        <FormField label={t("aevents.field.ends")} name="ends_at" type="datetime-local" required value={form.ends_at} onChange={set("ends_at")} />
+        <DateTimeField label={t("aevents.field.starts")} name="starts_at" id="starts_at" required defaultTime="19:00"
+          value={form.starts_at} onChange={setDate("starts_at")}
+          min={event === null ? startOfToday().toISOString() : null}
+          error={dateProblems.starts ? t(dateProblems.starts) : null} />
+        <div>
+          <DateTimeField label={t("aevents.field.ends")} name="ends_at" id="ends_at" required defaultTime="22:00"
+            value={form.ends_at} onChange={setDate("ends_at")}
+            min={form.starts_at ? startOfDay(new Date(form.starts_at)).toISOString() : null}
+            error={dateProblems.ends ? t(dateProblems.ends) : null} />
+          {form.starts_at && (
+            <div className="mt-2 flex flex-wrap items-center gap-1.5" role="group" aria-label={t("aevents.duration")}>
+              {DURATIONS.map(({ key, end }) => (
+                <button key={key} type="button" onClick={() => setDate("ends_at")(end(new Date(form.starts_at!)).toISOString())}
+                  className="rounded-full border border-slate-300 px-2.5 py-0.5 text-xs font-medium text-slate-700 hover:border-brand-400 hover:bg-brand-50">
+                  {t(key)}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+        <p className="-mt-2 text-xs text-slate-500 sm:col-span-2">
+          {t("aevents.timeZone")} <bdi dir="ltr">{timeZoneName(lang)}</bdi>
+        </p>
         <FormField label={t("aevents.field.capacity")} name="capacity" type="number" min={1} required value={form.capacity} onChange={set("capacity")} />
         <div className="grid grid-cols-[1fr_6rem] gap-2">
           <FormField label={t("aevents.field.price")} name="price" inputMode="decimal" placeholder="50.00" required value={form.price} onChange={set("price")} />

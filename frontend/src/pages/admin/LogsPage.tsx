@@ -29,8 +29,8 @@ export function filtersFromParams(params: URLSearchParams): { filters: LogFilter
     reason: get("reason") as LogFilters["reason"],
     method: get("method") as LogFilters["method"],
     gate_id: get("gate_id"),
-    from: from ? fromLocalInput(from) : undefined,
-    to: to ? fromLocalInput(to) : undefined,
+    from: (from && fromLocalInput(from)) || undefined,
+    to: (to && fromLocalInput(to)) || undefined,
     limit: PAGE_SIZE,
     offset: (page - 1) * PAGE_SIZE,
   };

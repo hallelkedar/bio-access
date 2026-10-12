@@ -168,12 +168,14 @@ function EventForm({ event, onSaved, onCoverChanged, onCancel }: { event: Event 
     const capacity = Number(form.capacity);
     if (priceCents === null) return setError(t("aevents.badPrice"));
     if (!Number.isInteger(capacity) || capacity < 1) return setError(t("aevents.badCapacity"));
-    if (!form.starts_at || !form.ends_at) return setError(t("aevents.missingDates"));
+    const startsAt = fromLocalInput(form.starts_at);
+    const endsAt = fromLocalInput(form.ends_at);
+    if (!startsAt || !endsAt) return setError(t("aevents.missingDates"));
     const input: EventInput = {
       name: form.name.trim(),
       location: form.location.trim(),
-      starts_at: fromLocalInput(form.starts_at),
-      ends_at: fromLocalInput(form.ends_at),
+      starts_at: startsAt,
+      ends_at: endsAt,
       capacity,
       price_cents: priceCents,
       currency: form.currency.trim().toUpperCase(),

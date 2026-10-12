@@ -25,4 +25,11 @@ describe("datetime-local conversion", () => {
     expect(fromLocalInput(toLocalInput(iso))).toBe(iso);
     expect(toLocalInput(iso)).toMatch(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}$/);
   });
+
+  it.each(["", "2026-12-24", "2026-12-2T10:00", "2026-12-24T19", "2026-02-31T10:00", "2026-13-01T10:00", "2026-12-24T24:30", "garbage"])(
+    "returns null instead of throwing for %j",
+    (value) => {
+      expect(fromLocalInput(value)).toBeNull();
+    },
+  );
 });

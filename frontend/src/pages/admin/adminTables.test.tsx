@@ -9,7 +9,7 @@ import * as adminEvents from "../../api/adminEvents";
 import { fromLocalInput } from "../../format";
 import { httpError, makeUser } from "../../test/factories";
 import { makeEvent } from "../../test/factories.events";
-import { filtersFromParams, LogsPage, PAGE_SIZE } from "./LogsPage";
+import { filtersFromParams, LogsPage, logsCsv, PAGE_SIZE } from "./LogsPage";
 import { SettingsPage } from "./SettingsPage";
 import { UsersPage } from "./UsersPage";
 
@@ -178,6 +178,56 @@ describe("LogsPage", () => {
     expect(cards[0]).toHaveTextContent("Summer Concert");
     expect(cards[0]).toHaveTextContent("✓ Approved");
     vi.unstubAllGlobals();
+  });
+
+  it("a row opens a details drawer (click or Enter); Esc closes it and focus returns to the row", async () => {
+    const { user } = renderAt(<LogsPage />);
+    const table = await screen.findByRole("table");
+    const [, approved, denied] = within(table).getAllByRole("row");
+
+    await user.click(approved!);
+    const drawer = screen.getByRole("dialog", { name: "Log entry" });
+    expect(drawer).toHaveTextContent("Dana Levi");
+    expect(drawer).toHaveTextContent("#42");
+    expect(drawer).toHaveTextContent("north-1");
+    expect(within(drawer).getByRole("button", { name: "Close" })).toHaveFocus();
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(approved).toHaveFocus();
+
+    denied!.focus();
+    await user.keyboard("{Enter}");
+    expect(screen.getByRole("dialog", { name: "Log entry" })).toHaveTextContent("Not recognized");
+  });
+
+  it("exports the current page as CSV (BOM, headers, escaped values)", async () => {
+    let saved: Blob | null = null;
+    URL.createObjectURL = vi.fn((blob: Blob) => {
+      saved = blob;
+      return "blob:logs";
+    });
+    URL.revokeObjectURL = vi.fn();
+    vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+    const { user } = renderAt(<LogsPage />);
+    await screen.findByRole("table");
+
+    await user.click(screen.getByRole("button", { name: "Export CSV" }));
+
+    const text = new TextDecoder("utf-8", { ignoreBOM: true }).decode(await saved!.arrayBuffer());
+    const lines = text.split("\r\n");
+    expect(text.startsWith("\uFEFF")).toBe(true);
+    expect(lines[0]).toBe("\uFEFFTime,Event,Gate,Method,Result,Reason,Holder,Ticket,Similarity");
+    expect(lines[1]).toMatch(/^2026-12-01 \d\d:05:00,Summer Concert,north-1,FACE,Approved,,Dana Levi,42,99\.1$/);
+    expect(lines[2]).toMatch(/,Denied,Not recognized,,,$/);
+  });
+
+  it("logsCsv neutralizes formulas and speaks Hebrew", () => {
+    const sneaky: AccessLogRow = { ...ROW, gate_id: "=HYPERLINK(\"http://x\")", user_name: "Levi, Dana" };
+    const [header, line] = logsCsv([sneaky], () => "Summer Concert", "he").split("\r\n");
+
+    expect(header).toBe("זמן,אירוע,שער,שיטה,תוצאה,סיבה,בעל הכרטיס,כרטיס,דמיון");
+    expect(line).toContain(`"'=HYPERLINK(""http://x"")"`);
+    expect(line).toContain(`"Levi, Dana"`);
   });
 
   it("filtersFromParams ignores empty values", () => {

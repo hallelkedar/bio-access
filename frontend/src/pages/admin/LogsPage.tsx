@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type HTMLAttributes, type KeyboardEvent, type ReactNode } from "react";
 import { useSearchParams } from "react-router";
 
 import { listLogs, type AccessLogRow, type LogFilters, type Page } from "../../api/admin";
@@ -9,13 +9,14 @@ import type { Event } from "../../api/types";
 import { REASON_LABEL, reasonLabel } from "../../components/charts/chartMath";
 import { ErrorBox } from "../../components/ErrorBox";
 import { Pagination } from "../../components/Pagination";
-import { Button, DateTimeField, EmptyState, SkeletonTable, Tooltip } from "../../components/ui";
+import { Button, DateTimeField, Drawer, EmptyState, SkeletonTable, Tooltip } from "../../components/ui";
 import { formatDateTime, formatDateTimeSeconds, formatRelative, fromLocalInput, localeFor, toLocalInput } from "../../format";
 import { useClock } from "../../hooks/useClock";
 import { useMediaQuery } from "../../hooks/useMediaQuery";
 import type { TranslationKey } from "../../i18n/en";
 import { useLanguage } from "../../i18n/LanguageProvider";
-import type { Lang } from "../../i18n/translate";
+import { translate, type Lang } from "../../i18n/translate";
+import { downloadCsv, toCsv } from "../../utils/csv";
 
 export const PAGE_SIZE = 50;
 const REASONS = (Object.keys(REASON_LABEL) as AccessReason[]).filter((r) => r !== "NONE");
@@ -100,6 +101,23 @@ export function LogsPage() {
   const eventName = (id: number) => events.find((e) => e.id === id)?.name ?? `#${id}`;
   const control = "mt-1 block w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm";
   const now = useClock(30_000); // keeps "3 min ago" honest
+  const [selected, setSelected] = useState<AccessLogRow | null>(null);
+  const open = (row: AccessLogRow) => ({
+    tabIndex: 0,
+    "aria-haspopup": "dialog" as const,
+    onClick: () => setSelected(row),
+    onKeyDown: (e: KeyboardEvent) => {
+      if (e.key === "Enter" || e.key === " ") {
+        e.preventDefault();
+        setSelected(row);
+      }
+    },
+  });
+
+  function exportCsv() {
+    if (!page) return;
+    downloadCsv(`access-logs-${localStamp(new Date().toISOString()).replace(/[: ]/g, "-")}.csv`, logsCsv(page.items, eventName, lang));
+  }
   const narrow = useMediaQuery("(max-width: 639px)");
 
   // Active filters as removable chips (the page number isn't a filter).
@@ -175,12 +193,20 @@ export function LogsPage() {
               <span aria-hidden="true">×</span>
             </button>
           ))}
-          {chips.length > 0 && (
-            <button type="button" onClick={() => setParams(new URLSearchParams())}
-              className="ms-auto rounded-md px-2 py-1 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900">
-              {t("logs.clear")}
-            </button>
-          )}
+          <div className="ms-auto flex items-center gap-2">
+            {chips.length > 0 && (
+              <button type="button" onClick={() => setParams(new URLSearchParams())}
+                className="rounded-md px-2 py-1 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900">
+                {t("logs.clear")}
+              </button>
+            )}
+            <Button variant="secondary" size="sm" onClick={exportCsv} disabled={!page || page.items.length === 0}>
+              <svg viewBox="0 0 20 20" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+                <path d="M10 3v9m0 0l-3.5-3.5M10 12l3.5-3.5M4 14v2a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1v-2" />
+              </svg>
+              {t("logs.exportCsv")}
+            </Button>
+          </div>
         </div>
       </div>
       <ErrorBox message={rangeError ? t("logs.rangeError") : error} />
@@ -193,7 +219,7 @@ export function LogsPage() {
         <>
           {narrow ? (
             <ul className="space-y-3">
-              {page.items.map((row) => <LogCard key={row.id} row={row} event={eventName(row.event_id)} now={now} />)}
+              {page.items.map((row) => <LogCard key={row.id} row={row} event={eventName(row.event_id)} now={now} {...open(row)} />)}
             </ul>
           ) : (
             // overflow-clip, not -hidden: the sticky header needs no scroll container in between.
@@ -213,7 +239,8 @@ export function LogsPage() {
                 </thead>
                 <tbody className="divide-y divide-slate-100">
                   {page.items.map((row) => (
-                    <tr key={row.id} className="hover:bg-slate-50">
+                    <tr key={row.id} {...open(row)}
+                      className="cursor-pointer hover:bg-slate-50 focus-visible:bg-brand-50 focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-brand-500">
                       <td className={CELL}><LogTime iso={row.timestamp} now={now} /></td>
                       <td className={CELL}><Truncated text={eventName(row.event_id)} /></td>
                       <td className={`${CELL} font-mono text-xs`}><Truncated text={row.gate_id} /></td>
@@ -231,7 +258,62 @@ export function LogsPage() {
           <Pagination total={page.total} offset={page.offset} limit={page.limit} onChange={goTo} />
         </>
       )}
+      <Drawer open={selected !== null} title={t("logs.details")} onClose={() => setSelected(null)}>
+        {selected && <LogDetails row={selected} event={eventName(selected.event_id)} now={now} />}
+      </Drawer>
     </section>
+  );
+}
+
+/** "2026-12-01 20:05:07" in local time: Excel reads it as a date. */
+function localStamp(iso: string): string {
+  const d = new Date(iso);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
+/** The current page of logs as CSV, with headers and values in the page language. */
+export function logsCsv(rows: AccessLogRow[], eventName: (id: number) => string, lang: Lang): string {
+  const tr = (key: TranslationKey) => translate(lang, key);
+  return toCsv([
+    [tr("logs.col.time"), tr("logs.col.event"), tr("logs.col.gate"), tr("logs.col.method"), tr("logs.col.result"),
+      tr("logs.col.reason"), tr("logs.col.holder"), tr("logs.ticket"), tr("logs.col.similarity")],
+    ...rows.map((row) => [
+      localStamp(row.timestamp),
+      eventName(row.event_id),
+      row.gate_id,
+      tr(`method.${row.method}`),
+      tr(row.result === "APPROVED" ? "logs.approved" : "logs.denied"),
+      row.reason === "NONE" ? "" : reasonLabel(lang, row.reason),
+      row.user_name ?? "",
+      row.ticket_id ?? "",
+      row.similarity === null ? "" : row.similarity.toFixed(1),
+    ]),
+  ]);
+}
+
+function LogDetails({ row, event, now }: { row: AccessLogRow; event: string; now: Date }) {
+  const { t, lang } = useLanguage();
+  const items: [TranslationKey, ReactNode][] = [
+    ["logs.col.time", <><span className="block">{formatDateTimeSeconds(row.timestamp, lang)}</span><span className="text-xs text-slate-500">{formatRelative(row.timestamp, now, lang)}</span></>],
+    ["logs.col.event", <bdi>{event}</bdi>],
+    ["logs.col.gate", <span className="font-mono">{row.gate_id}</span>],
+    ["logs.col.method", <MethodPill method={row.method} />],
+    ["logs.col.result", <ResultBadge result={row.result} />],
+    ["logs.col.reason", row.reason === "NONE" ? "—" : reasonLabel(lang, row.reason)],
+    ["logs.col.holder", <bdi>{row.user_name ?? "—"}</bdi>],
+    ["logs.ticket", row.ticket_id === null ? "—" : `#${row.ticket_id}`],
+    ["logs.col.similarity", <Similarity value={row.similarity} align="start" />],
+  ];
+  return (
+    <dl className="divide-y divide-slate-100 text-sm">
+      {items.map(([key, value]) => (
+        <div key={key} className="grid grid-cols-[8rem_1fr] items-center gap-3 py-2.5">
+          <dt className="text-slate-500">{t(key)}</dt>
+          <dd className="min-w-0 text-slate-900">{value}</dd>
+        </div>
+      ))}
+    </dl>
   );
 }
 
@@ -300,11 +382,11 @@ function MethodPill({ method }: { method: AccessLogRow["method"] }) {
   );
 }
 
-/** A thin bar plus the number (or a dash when there was no face match). */
-function Similarity({ value }: { value: number | null }) {
+/** A thin bar plus the number (or a dash when there was no face match). End-aligned in table cells. */
+function Similarity({ value, align = "end" }: { value: number | null; align?: "start" | "end" }) {
   if (value === null) return <span className="text-slate-400">—</span>;
   return (
-    <span className="inline-flex w-full items-center justify-end gap-2">
+    <span className={`inline-flex items-center gap-2 ${align === "end" ? "w-full justify-end" : ""}`}>
       <span aria-hidden="true" className="hidden h-1.5 w-10 overflow-hidden rounded-full bg-slate-100 lg:block">
         <span className="block h-full rounded-full bg-brand-500" style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
       </span>
@@ -314,10 +396,10 @@ function Similarity({ value }: { value: number | null }) {
 }
 
 /** Phones: one card per entry instead of an 8-column table. */
-function LogCard({ row, event, now }: { row: AccessLogRow; event: string; now: Date }) {
+function LogCard({ row, event, now, ...open }: { row: AccessLogRow; event: string; now: Date } & HTMLAttributes<HTMLLIElement>) {
   const { lang } = useLanguage();
   return (
-    <li className="space-y-1.5 rounded-lg border border-slate-200 bg-white p-3 text-sm">
+    <li {...open} className="cursor-pointer space-y-1.5 rounded-lg border border-slate-200 bg-white p-3 text-sm hover:border-brand-300 focus-visible:outline-2 focus-visible:outline-brand-500">
       <div className="flex items-center justify-between gap-2">
         <LogTime iso={row.timestamp} now={now} />
         <ResultBadge result={row.result} />

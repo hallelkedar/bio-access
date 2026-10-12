@@ -82,6 +82,7 @@
   --animate-pop-in: pop-in 180ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
   --animate-fade-in: fade-in 180ms ease-out both;
   --animate-route-in: route-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-drawer-in: drawer-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
   --animate-ticket-flash: ticket-flash 1.8s ease-out 250ms both;
 
   @keyframes fade-up {
@@ -128,6 +129,11 @@
   @keyframes ticket-flash {
     0%, 35% { box-shadow: 0 0 0 3px rgb(99 102 241 / 0.6), 0 8px 30px rgb(99 102 241 / 0.18); }
     100% { box-shadow: 0 0 0 3px rgb(99 102 241 / 0), 0 1px 2px rgb(15 23 42 / 0.05); }
+  }
+  /* --drawer-from is set per direction on the panel (in from the end side, also in RTL) */
+  @keyframes drawer-in {
+    from { opacity: 0; transform: translateX(var(--drawer-from, 2rem)); }
+    to { opacity: 1; transform: none; }
   }
   @keyframes route-in {
     from { opacity: 0; transform: translateY(6px); }

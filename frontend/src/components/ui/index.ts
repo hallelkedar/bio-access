@@ -4,6 +4,7 @@ export { Card } from "./Card";
 export { ConfirmDialog } from "./ConfirmDialog";
 export { CountUp } from "./CountUp";
 export { DateTimeField } from "./DateTimeField";
+export { Drawer } from "./Drawer";
 export { EmptyState } from "./EmptyState";
 export { Modal } from "./Modal";
 export { Reveal } from "./Reveal";

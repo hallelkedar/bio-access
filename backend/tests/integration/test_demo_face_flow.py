@@ -32,7 +32,8 @@ def _webcam_frame() -> bytes:
 
 @pytest.fixture
 def demo(client: TestClient, tmp_path: Path) -> Iterator[DemoFaceProvider]:
-    provider = DemoFaceProvider(tmp_path / "demo_faces.json")
+    # The uploaded test pictures aren't faces: a stub detector "sees" one (counting is tested in unit tests).
+    provider = DemoFaceProvider(tmp_path / "demo_faces.json", face_counter=lambda _picture: 1)
     app.dependency_overrides[get_face_provider] = lambda: provider
     yield provider
 

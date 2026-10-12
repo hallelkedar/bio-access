@@ -20,5 +20,5 @@ def get_face_provider() -> FaceProvider:
             settings.aws_region, settings.aws_access_key_id, settings.aws_secret_access_key
         )
     if settings.face_provider == "demo":
-        return DemoFaceProvider(settings.demo_faces_file)
+        return DemoFaceProvider(settings.demo_faces_file, face_check=settings.demo_face_check)
     return FakeFaceProvider()

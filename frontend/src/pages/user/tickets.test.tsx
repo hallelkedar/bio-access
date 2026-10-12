@@ -24,8 +24,8 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function renderPage() {
-  const router = createMemoryRouter([{ path: "*", element: <MyTicketsPage /> }]);
+function renderPage(path = "/tickets") {
+  const router = createMemoryRouter([{ path: "*", element: <MyTicketsPage /> }], { initialEntries: [path] });
   const view = render(<RouterProvider router={router} />);
   return { ...view, user: userEvent.setup() };
 }
@@ -120,5 +120,40 @@ describe("MyTicketsPage", () => {
     renderPage();
 
     expect(await screen.findByRole("link", { name: "Browse events" })).toHaveAttribute("href", "/events");
+  });
+});
+
+describe("MyTicketsPage: link from Events", () => {
+  const scroll = vi.fn();
+  beforeEach(() => {
+    Element.prototype.scrollIntoView = scroll; // jsdom has no layout
+  });
+
+  function twoTickets() {
+    tickets.myTickets.mockResolvedValue([
+      makeTicket("VALID", { id: 41, event: { ...makeTicket("VALID").event, name: "First Show" } }),
+      makeTicket("VALID", { id: 42, event: { ...makeTicket("VALID").event, name: "Second Show" } }),
+    ]);
+  }
+
+  it("#ticket-42 scrolls to that card, focuses it and highlights it", async () => {
+    twoTickets();
+    renderPage("/tickets#ticket-42");
+
+    const target = (await screen.findByRole("heading", { name: "Second Show" })).closest("li")!;
+    await waitFor(() => expect(target).toHaveFocus());
+    expect(target).toHaveAttribute("id", "ticket-42");
+    expect(target).toHaveAttribute("data-highlighted", "true");
+    expect(scroll).toHaveBeenCalledWith({ behavior: "smooth", block: "center" });
+    expect((await screen.findByRole("heading", { name: "First Show" })).closest("li")).not.toHaveAttribute("data-highlighted");
+  });
+
+  it("does nothing without a hash", async () => {
+    twoTickets();
+    renderPage("/tickets");
+
+    await screen.findByRole("heading", { name: "Second Show" });
+    expect(scroll).not.toHaveBeenCalled();
+    expect(document.querySelector("[data-highlighted]")).toBeNull();
   });
 });

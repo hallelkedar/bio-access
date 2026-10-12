@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link } from "react-router";
+import { Link, useLocation } from "react-router";
 
 import { apiErrorMessage } from "../../api/errors";
 import { fetchQrImage, myTickets, startCheckout } from "../../api/tickets";
@@ -7,6 +7,7 @@ import type { MyTicket, TicketStatus } from "../../api/types";
 import { ErrorBox } from "../../components/ErrorBox";
 import { Spinner } from "../../components/Spinner";
 import { formatDateTime } from "../../format";
+import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { useLanguage } from "../../i18n/LanguageProvider";
 import { redirectTo } from "../../navigation";
 
@@ -45,6 +46,18 @@ export function MyTicketsPage() {
     void load();
   }, [load]);
 
+  // /tickets#ticket-42 (the "View ticket" link on Events): bring that card into view once loaded.
+  const { hash } = useLocation();
+  const reducedMotion = usePrefersReducedMotion();
+  const targetId = Number(/^#ticket-(\d+)$/.exec(hash)?.[1] ?? NaN);
+  useEffect(() => {
+    if (!tickets || Number.isNaN(targetId)) return;
+    const card = document.getElementById(`ticket-${targetId}`);
+    if (!card) return;
+    card.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "center" });
+    card.focus({ preventScroll: true });
+  }, [tickets, targetId, reducedMotion]);
+
   return (
     <section>
       <h1 className="text-2xl font-bold">{t("tickets.title")}</h1>
@@ -64,7 +77,7 @@ export function MyTicketsPage() {
       ) : (
         <ul className="mt-6 space-y-4">
           {tickets.map((ticket) => (
-            <TicketCard key={ticket.id} ticket={ticket} />
+            <TicketCard key={ticket.id} ticket={ticket} highlighted={ticket.id === targetId} />
           ))}
         </ul>
       )}
@@ -72,11 +85,12 @@ export function MyTicketsPage() {
   );
 }
 
-function TicketCard({ ticket }: { ticket: MyTicket }) {
+function TicketCard({ ticket, highlighted = false }: { ticket: MyTicket; highlighted?: boolean }) {
   const { t, lang } = useLanguage();
   const muted = ticket.status === "CANCELLED";
   return (
-    <li className={`rounded-lg border border-slate-200 bg-white p-4 shadow-sm ${muted ? "opacity-60" : ""}`}>
+    <li id={`ticket-${ticket.id}`} tabIndex={-1} data-highlighted={highlighted || undefined}
+      className={`scroll-mt-24 rounded-lg border border-slate-200 bg-white p-4 shadow-sm focus:outline-none focus-visible:outline-2 focus-visible:outline-brand-500 ${muted ? "opacity-60" : ""} ${highlighted ? "animate-ticket-flash" : ""}`}>
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
         <div>
           <h2 className="text-lg font-semibold">{ticket.event.name}</h2>
@@ -141,10 +155,16 @@ function QrCode({ ticketId, eventName }: { ticketId: number; eventName: string }
       </div>
     );
   }
-  if (!url) return <Spinner label={t("tickets.qrLoading")} />;
+  // The box keeps the QR's size while it loads, so cards below don't jump (and #ticket-N scrolling stays put).
   return (
     <figure className="text-center">
-      <img src={url} alt={t("tickets.qrAlt", { event: eventName })} className="h-40 w-40 rounded border border-slate-200" />
+      {url ? (
+        <img src={url} alt={t("tickets.qrAlt", { event: eventName })} className="h-40 w-40 rounded border border-slate-200" />
+      ) : (
+        <div className="flex h-40 w-40 items-center justify-center rounded border border-slate-200 px-2 text-xs">
+          <Spinner label={t("tickets.qrLoading")} />
+        </div>
+      )}
       <figcaption className="mt-1 max-w-40 text-xs text-slate-500">
         {t("tickets.qrCaption")}
       </figcaption>

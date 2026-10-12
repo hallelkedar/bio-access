@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
+import { Link } from "react-router";
 
 import { apiErrorMessage } from "../../api/errors";
 import { listEvents } from "../../api/events";
@@ -95,8 +96,17 @@ function TicketAction({ event, ticket }: { event: Event; ticket: MyTicket | unde
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  if (ticket?.status === "VALID") return <Badge>{t("events.haveTicket")}</Badge>;
-  if (ticket?.status === "ENTERED") return <Badge>{t("events.entered")}</Badge>;
+  if (ticket && (ticket.status === "VALID" || ticket.status === "ENTERED")) {
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <Badge>{t(ticket.status === "VALID" ? "events.haveTicket" : "events.entered")}</Badge>
+        <Link to={`/tickets#ticket-${ticket.id}`}
+          className="rounded-md px-1 text-sm font-medium text-blue-700 underline-offset-2 hover:underline focus-visible:outline-2 focus-visible:outline-brand-500">
+          {t("events.viewTicket")}
+        </Link>
+      </div>
+    );
+  }
   const pending = ticket?.status === "PENDING_PAYMENT";
 
   async function pay() {

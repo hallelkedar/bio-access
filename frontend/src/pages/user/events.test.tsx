@@ -62,6 +62,25 @@ describe("EventsPage", () => {
     else expect(summer.getByText(label)).toBeInTheDocument();
   });
 
+  it.each(["VALID", "ENTERED"] as const)("a %s ticket links to that ticket on My tickets", async (status) => {
+    events.listEvents.mockResolvedValue([makeEvent()]);
+    tickets.myTickets.mockResolvedValue([makeTicket(status, { id: 42 })]);
+
+    renderPage(<EventsPage />);
+
+    const link = (await card("Summer Concert")).getByRole("link", { name: "View ticket →" });
+    expect(link).toHaveAttribute("href", "/tickets#ticket-42");
+  });
+
+  it.each(["PENDING_PAYMENT", "CANCELLED"] as const)("a %s ticket has no ticket link", async (status) => {
+    events.listEvents.mockResolvedValue([makeEvent()]);
+    tickets.myTickets.mockResolvedValue([makeTicket(status)]);
+
+    renderPage(<EventsPage />);
+
+    expect((await card("Summer Concert")).queryByRole("link")).not.toBeInTheDocument();
+  });
+
   it("buy creates a ticket, opens checkout and redirects", async () => {
     events.listEvents.mockResolvedValue([makeEvent()]);
     tickets.myTickets.mockResolvedValue([]);

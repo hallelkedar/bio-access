@@ -82,6 +82,7 @@ export const he: Record<TranslationKey, string> = {
   "events.completePayment": "להשלמת התשלום",
   "events.haveTicket": "יש לכם כרטיס",
   "events.entered": "נכנסתם",
+  "events.viewTicket": "לכרטיס ←",
   // --- checkout
   "checkout.confirming": "מאשרים את התשלום…",
   "checkout.confirmingProvider": "מאשרים מול ספק התשלומים…",

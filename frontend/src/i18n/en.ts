@@ -81,6 +81,7 @@ export const en = {
   "events.completePayment": "Complete payment",
   "events.haveTicket": "You have a ticket",
   "events.entered": "Entered",
+  "events.viewTicket": "View ticket →",
   // --- checkout
   "checkout.confirming": "Confirming your payment…",
   "checkout.confirmingProvider": "Confirming with the payment provider…",

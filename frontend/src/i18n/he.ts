@@ -485,5 +485,5 @@ export const he: Record<TranslationKey, string> = {
   "landing.demo.denied": "הכניסה נדחתה",
   "landing.demo.name": "נועה כהן",
   "landing.demo.tryReal": "למסוף השער האמיתי",
-  "landing.footer": "BioAccess · פרויקט אקדמי",
+  "landing.footer": "BioAccess · 2026",
 };

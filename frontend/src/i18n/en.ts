@@ -484,7 +484,7 @@ export const en = {
   "landing.demo.denied": "Entry denied",
   "landing.demo.name": "Noa Cohen",
   "landing.demo.tryReal": "Try the real gate",
-  "landing.footer": "BioAccess · academic project",
+  "landing.footer": "BioAccess · 2026",
 } as const;
 
 export type TranslationKey = keyof typeof en;

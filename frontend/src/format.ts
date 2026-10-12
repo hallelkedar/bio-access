@@ -10,6 +10,23 @@ export function formatDateTime(iso: string, lang: Lang = "en"): string {
   return new Intl.DateTimeFormat(localeFor(lang), { dateStyle: "medium", timeStyle: "short" }).format(new Date(iso));
 }
 
+/** Like formatDateTime, with seconds: for logs, where many entries share a minute. */
+export function formatDateTimeSeconds(iso: string, lang: Lang = "en"): string {
+  return new Intl.DateTimeFormat(localeFor(lang), { dateStyle: "medium", timeStyle: "medium" }).format(new Date(iso));
+}
+
+/** "just now", "3 min ago", "2 hr. ago", "yesterday"; older than a week → the date and time. */
+export function formatRelative(iso: string, now: Date, lang: Lang = "en"): string {
+  const seconds = Math.round((new Date(iso).getTime() - now.getTime()) / 1000);
+  const abs = Math.abs(seconds);
+  const rtf = new Intl.RelativeTimeFormat(localeFor(lang), { numeric: "auto", style: "short" });
+  if (abs < 45) return rtf.format(0, "second");
+  if (abs < 3600) return rtf.format(Math.round(seconds / 60), "minute");
+  if (abs < 86_400) return rtf.format(Math.round(seconds / 3600), "hour");
+  if (abs < 7 * 86_400) return rtf.format(Math.round(seconds / 86_400), "day");
+  return formatDateTime(iso, lang);
+}
+
 export function formatPrice(cents: number, currency: string, lang: Lang = "en"): string {
   return new Intl.NumberFormat(localeFor(lang), { style: "currency", currency }).format(cents / 100);
 }

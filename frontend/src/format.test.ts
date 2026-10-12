@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { fromLocalInput, parsePriceToCents, toLocalInput } from "./format";
+import { formatDateTimeSeconds, formatRelative, fromLocalInput, parsePriceToCents, toLocalInput } from "./format";
 
 describe("price parsing", () => {
   it.each([
@@ -32,4 +32,27 @@ describe("datetime-local conversion", () => {
       expect(fromLocalInput(value)).toBeNull();
     },
   );
+});
+
+describe("log times", () => {
+  const now = new Date("2026-10-12T10:00:00Z");
+  const ago = (ms: number) => new Date(now.getTime() - ms).toISOString();
+
+  it.each([
+    [10_000, "now"],
+    [3 * 60_000, "3 min. ago"],
+    [2 * 3_600_000, "2 hr. ago"],
+    [26 * 3_600_000, "yesterday"],
+  ])("%i ms ago → %s", (ms, text) => {
+    expect(formatRelative(ago(ms), now, "en")).toBe(text);
+  });
+
+  it("falls back to the date after a week, and speaks Hebrew", () => {
+    expect(formatRelative(ago(10 * 86_400_000), now, "en")).toMatch(/Oct 2, 2026/);
+    expect(formatRelative(ago(3 * 60_000), now, "he")).toMatch(/דק/);
+  });
+
+  it("shows seconds when asked", () => {
+    expect(formatDateTimeSeconds("2026-12-01T18:05:07Z", "en")).toMatch(/:07/);
+  });
 });

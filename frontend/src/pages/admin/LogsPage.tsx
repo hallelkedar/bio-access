@@ -9,11 +9,13 @@ import type { Event } from "../../api/types";
 import { REASON_LABEL, reasonLabel } from "../../components/charts/chartMath";
 import { ErrorBox } from "../../components/ErrorBox";
 import { Pagination } from "../../components/Pagination";
-import { Spinner } from "../../components/Spinner";
-import { DateTimeField } from "../../components/ui";
-import { formatDateTime, fromLocalInput, toLocalInput } from "../../format";
+import { Button, DateTimeField, EmptyState, SkeletonTable, Tooltip } from "../../components/ui";
+import { formatDateTime, formatDateTimeSeconds, formatRelative, fromLocalInput, localeFor, toLocalInput } from "../../format";
+import { useClock } from "../../hooks/useClock";
+import { useMediaQuery } from "../../hooks/useMediaQuery";
 import type { TranslationKey } from "../../i18n/en";
 import { useLanguage } from "../../i18n/LanguageProvider";
+import type { Lang } from "../../i18n/translate";
 
 export const PAGE_SIZE = 50;
 const REASONS = (Object.keys(REASON_LABEL) as AccessReason[]).filter((r) => r !== "NONE");
@@ -96,94 +98,240 @@ export function LogsPage() {
   }
 
   const eventName = (id: number) => events.find((e) => e.id === id)?.name ?? `#${id}`;
-  const select = "rounded-md border border-slate-300 px-2 py-1.5 text-sm";
+  const control = "mt-1 block w-full rounded-md border border-slate-300 px-2 py-1.5 text-sm";
+  const now = useClock(30_000); // keeps "3 min ago" honest
+  const narrow = useMediaQuery("(max-width: 639px)");
+
+  // Active filters as removable chips (the page number isn't a filter).
+  const chips = FILTER_KEYS.filter((key) => params.get(key)).map((key) => {
+    const value = params.get(key)!;
+    const label =
+      key === "event_id" ? eventName(Number(value))
+      : key === "result" ? t(value === "APPROVED" ? "logs.approved" : "logs.denied")
+      : key === "reason" ? reasonLabel(lang, value as AccessReason)
+      : key === "method" ? t(`method.${value as "FACE" | "QR"}`)
+      : key === "from" || key === "to" ? formatDateTime(fromLocalInput(value) ?? value, lang)
+      : value;
+    return { key, text: `${t(CHIP_LABEL[key])}: ${label}` };
+  });
 
   return (
     <section className="space-y-4">
       <h1 className="text-2xl font-bold">{t("logs.title")}</h1>
-      <div className="flex flex-wrap items-end gap-3" role="group" aria-label={t("logs.filters")}>
-        <label className="text-sm">{t("logs.event")}<br />
-          <select className={select} value={params.get("event_id") ?? ""} onChange={(e) => setFilter("event_id", e.target.value)}>
-            <option value="">{t("logs.allEvents")}</option>
-            {events.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
-          </select>
-        </label>
-        <label className="text-sm">{t("logs.result")}<br />
-          <select className={select} value={params.get("result") ?? ""} onChange={(e) => setFilter("result", e.target.value)}>
-            <option value="">{t("logs.all")}</option><option value="APPROVED">{t("logs.approved")}</option><option value="DENIED">{t("logs.denied")}</option>
-          </select>
-        </label>
-        <label className="text-sm">{t("logs.reason")}<br />
-          <select className={select} value={params.get("reason") ?? ""} onChange={(e) => setFilter("reason", e.target.value)}>
-            <option value="">{t("logs.any")}</option>
-            {REASONS.map((r) => <option key={r} value={r}>{reasonLabel(lang, r)}</option>)}
-          </select>
-        </label>
-        <label className="text-sm">{t("logs.method")}<br />
-          <select className={select} value={params.get("method") ?? ""} onChange={(e) => setFilter("method", e.target.value)}>
-            <option value="">{t("logs.any")}</option><option value="FACE">{t("logs.face")}</option><option value="QR">QR</option>
-          </select>
-        </label>
-        <label className="text-sm">{t("logs.gate")}<br />
-          <input className={select} value={params.get("gate_id") ?? ""} maxLength={64} placeholder="north-1"
-            onChange={(e) => setFilter("gate_id", e.target.value)} />
-        </label>
-        {/* The URL keeps local "YYYY-MM-DDTHH:mm" (bookmarks keep working); the field speaks UTC ISO. */}
-        <div className="w-60">
+      <div role="group" aria-label={t("logs.filters")} className="space-y-3 rounded-card border border-slate-200 bg-white p-4 shadow-card">
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <label className="text-sm font-medium text-slate-700">{t("logs.event")}
+            <select className={control} value={params.get("event_id") ?? ""} onChange={(e) => setFilter("event_id", e.target.value)}>
+              <option value="">{t("logs.allEvents")}</option>
+              {events.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+            </select>
+          </label>
+          <label className="text-sm font-medium text-slate-700">{t("logs.result")}
+            <select className={control} value={params.get("result") ?? ""} onChange={(e) => setFilter("result", e.target.value)}>
+              <option value="">{t("logs.all")}</option><option value="APPROVED">{t("logs.approved")}</option><option value="DENIED">{t("logs.denied")}</option>
+            </select>
+          </label>
+          <label className="text-sm font-medium text-slate-700">{t("logs.reason")}
+            <select className={control} value={params.get("reason") ?? ""} onChange={(e) => setFilter("reason", e.target.value)}>
+              <option value="">{t("logs.any")}</option>
+              {REASONS.map((r) => <option key={r} value={r}>{reasonLabel(lang, r)}</option>)}
+            </select>
+          </label>
+          <div className="grid grid-cols-2 gap-3">
+            <label className="text-sm font-medium text-slate-700">{t("logs.method")}
+              <select className={control} value={params.get("method") ?? ""} onChange={(e) => setFilter("method", e.target.value)}>
+                <option value="">{t("logs.any")}</option><option value="FACE">{t("logs.face")}</option><option value="QR">QR</option>
+              </select>
+            </label>
+            <label className="text-sm font-medium text-slate-700">{t("logs.gate")}
+              <input className={`${control} font-mono`} value={params.get("gate_id") ?? ""} maxLength={64} placeholder="north-1"
+                onChange={(e) => setFilter("gate_id", e.target.value)} />
+            </label>
+          </div>
+          {/* The URL keeps local "YYYY-MM-DDTHH:mm" (bookmarks keep working); the field speaks UTC ISO. */}
           <DateTimeField label={t("logs.from")} id="logs-from" value={fromLocalInput(params.get("from") ?? "")}
             onChange={(iso) => setFilter("from", iso ? toLocalInput(iso) : "")} />
-        </div>
-        <div className="w-60">
           <DateTimeField label={t("logs.to")} id="logs-to" defaultTime="23:59" value={fromLocalInput(params.get("to") ?? "")}
             onChange={(iso) => setFilter("to", iso ? toLocalInput(iso) : "")} />
+          <div className="flex flex-wrap items-end gap-1.5 sm:col-span-2" role="group" aria-label={t("logs.presets")}>
+            <span className="w-full text-sm font-medium text-slate-700">{t("logs.presets")}</span>
+            {PRESETS.map(({ key, from }) => (
+              <button key={key} type="button" onClick={() => applyPreset(from(new Date()))}
+                className="rounded-full border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-brand-400 hover:bg-brand-50">
+                {t(key)}
+              </button>
+            ))}
+          </div>
         </div>
-        <div className="flex flex-wrap gap-1.5 pb-1" role="group" aria-label={t("logs.presets")}>
-          {PRESETS.map(({ key, from }) => (
-            <button key={key} type="button" onClick={() => applyPreset(from(new Date()))}
-              className="rounded-full border border-slate-300 px-2.5 py-1 text-xs font-medium text-slate-700 hover:border-brand-400 hover:bg-brand-50">
-              {t(key)}
+        <div className="flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3 text-sm">
+          <span className="font-medium text-slate-800" aria-live="polite">
+            {page ? entriesLabel(page.total, lang, t) : "\u00a0"}
+          </span>
+          {chips.map((chip) => (
+            <button key={chip.key} type="button" onClick={() => setFilter(chip.key, "")}
+              aria-label={t("logs.removeFilter", { filter: chip.text })}
+              className="inline-flex max-w-full items-center gap-1 rounded-full bg-brand-50 px-2.5 py-0.5 text-xs font-medium text-brand-800 hover:bg-brand-100">
+              <bdi className="truncate">{chip.text}</bdi>
+              <span aria-hidden="true">×</span>
             </button>
           ))}
+          {chips.length > 0 && (
+            <button type="button" onClick={() => setParams(new URLSearchParams())}
+              className="ms-auto rounded-md px-2 py-1 text-sm font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900">
+              {t("logs.clear")}
+            </button>
+          )}
         </div>
-        <button type="button" onClick={() => setParams(new URLSearchParams())} className="rounded-md border px-3 py-1.5 text-sm">
-          {t("logs.clear")}
-        </button>
       </div>
       <ErrorBox message={rangeError ? t("logs.rangeError") : error} />
-      {!rangeError && !error && !page && <Spinner label={t("logs.loading")} />}
-      {page && page.items.length === 0 && <p className="text-slate-600">{t("logs.empty")}</p>}
+      {!rangeError && !error && !page && <SkeletonTable rows={8} columns={narrow ? 2 : 8} />}
+      {page && page.items.length === 0 && (
+        <EmptyState title={t("logs.empty")}
+          action={chips.length > 0 ? <Button variant="secondary" onClick={() => setParams(new URLSearchParams())}>{t("logs.clear")}</Button> : undefined} />
+      )}
       {page && page.items.length > 0 && (
         <>
-          <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-            <table className="w-full text-left text-sm">
-              <thead className="bg-slate-50 text-start text-slate-600">
-                <tr>
-                  <th className="px-3 py-2 text-start">{t("logs.col.time")}</th><th className="px-3 py-2 text-start">{t("logs.col.event")}</th><th className="px-3 py-2 text-start">{t("logs.col.gate")}</th>
-                  <th className="px-3 py-2 text-start">{t("logs.col.method")}</th><th className="px-3 py-2 text-start">{t("logs.col.result")}</th><th className="px-3 py-2 text-start">{t("logs.col.reason")}</th>
-                  <th className="px-3 py-2 text-start">{t("logs.col.holder")}</th><th className="px-3 py-2 text-end">{t("logs.col.similarity")}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {page.items.map((row) => (
-                  <tr key={row.id} className="border-t border-slate-100">
-                    <td className="whitespace-nowrap px-3 py-2">{formatDateTime(row.timestamp, lang)}</td>
-                    <td className="px-3 py-2">{eventName(row.event_id)}</td>
-                    <td className="px-3 py-2">{row.gate_id}</td>
-                    <td className="px-3 py-2">{t(`method.${row.method}`)}</td>
-                    <td className={`px-3 py-2 ${row.result === "APPROVED" ? "text-emerald-700" : "text-red-700"}`}>
-                      {row.result === "APPROVED" ? t("logs.approvedMark") : t("logs.deniedMark")}
-                    </td>
-                    <td className="px-3 py-2">{row.reason === "NONE" ? "" : reasonLabel(lang, row.reason)}</td>
-                    <td className="px-3 py-2">{row.user_name ?? "—"}</td>
-                    <td className="px-3 py-2 text-end tabular-nums">{row.similarity === null ? "—" : row.similarity.toFixed(1)}</td>
+          {narrow ? (
+            <ul className="space-y-3">
+              {page.items.map((row) => <LogCard key={row.id} row={row} event={eventName(row.event_id)} now={now} />)}
+            </ul>
+          ) : (
+            // overflow-clip, not -hidden: the sticky header needs no scroll container in between.
+            <div className="overflow-clip rounded-lg border border-slate-200 bg-white">
+              <table className="w-full table-fixed text-start text-sm">
+                <colgroup>
+                  <col className="w-[14%]" /><col className="w-[18%]" /><col className="w-[10%]" /><col className="w-[9%]" />
+                  <col className="w-[12%]" /><col className="w-[15%]" /><col className="w-[12%]" /><col className="w-[10%]" />
+                </colgroup>
+                <thead className="text-xs uppercase tracking-wide text-slate-500">
+                  <tr>
+                    {(["time", "event", "gate", "method", "result", "reason", "holder"] as const).map((col) => (
+                      <th key={col} className={HEAD}>{t(`logs.col.${col}`)}</th>
+                    ))}
+                    <th className={`${HEAD} text-end`}>{t("logs.col.similarity")}</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {page.items.map((row) => (
+                    <tr key={row.id} className="hover:bg-slate-50">
+                      <td className={CELL}><LogTime iso={row.timestamp} now={now} /></td>
+                      <td className={CELL}><Truncated text={eventName(row.event_id)} /></td>
+                      <td className={`${CELL} font-mono text-xs`}><Truncated text={row.gate_id} /></td>
+                      <td className={CELL}><MethodPill method={row.method} /></td>
+                      <td className={CELL}><ResultBadge result={row.result} /></td>
+                      <td className={`${CELL} text-slate-500`}><Truncated text={row.reason === "NONE" ? "" : reasonLabel(lang, row.reason)} /></td>
+                      <td className={CELL}><Truncated text={row.user_name ?? "—"} /></td>
+                      <td className={`${CELL} text-end`}><Similarity value={row.similarity} /></td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
           <Pagination total={page.total} offset={page.offset} limit={page.limit} onChange={goTo} />
         </>
       )}
     </section>
+  );
+}
+
+const HEAD = "sticky top-14 z-10 border-b border-slate-200 bg-slate-50/95 px-3 py-2.5 text-start font-semibold backdrop-blur";
+const CELL = "px-3 py-2.5 align-middle";
+
+const CHIP_LABEL: Record<(typeof FILTER_KEYS)[number], TranslationKey> = {
+  event_id: "logs.event",
+  result: "logs.result",
+  reason: "logs.reason",
+  method: "logs.method",
+  gate_id: "logs.gate",
+  from: "logs.from",
+  to: "logs.to",
+};
+
+function entriesLabel(total: number, lang: Lang, t: (key: TranslationKey, vars?: Record<string, string | number>) => string): string {
+  const one = new Intl.PluralRules(localeFor(lang)).select(total) === "one";
+  return t(one ? "logs.count.one" : "logs.count.other", { count: new Intl.NumberFormat(localeFor(lang)).format(total) });
+}
+
+/** "3 min ago", with the exact time (seconds included) on hover and focus. */
+function LogTime({ iso, now }: { iso: string; now: Date }) {
+  const { lang } = useLanguage();
+  return (
+    <Tooltip content={formatDateTimeSeconds(iso, lang)}>
+      <time dateTime={iso} tabIndex={0} className="whitespace-nowrap rounded tabular-nums focus-visible:outline-2 focus-visible:outline-brand-500">
+        {formatRelative(iso, now, lang)}
+      </time>
+    </Tooltip>
+  );
+}
+
+/**
+ * One line, cut with "…"; the full text is in a native title for mouse users. dir="auto":
+ * an English name in the Hebrew page (or the reverse) keeps its own direction, so the "…"
+ * lands at its end instead of eating its beginning.
+ */
+function Truncated({ text }: { text: string }) {
+  return <span dir="auto" title={text || undefined} className="block truncate text-start">{text}</span>;
+}
+
+function ResultBadge({ result }: { result: AccessLogRow["result"] }) {
+  const { t } = useLanguage();
+  const approved = result === "APPROVED";
+  return (
+    <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-semibold ${approved ? "bg-emerald-100 text-emerald-800" : "bg-red-100 text-red-800"}`}>
+      {approved ? t("logs.approvedMark") : t("logs.deniedMark")}
+    </span>
+  );
+}
+
+function MethodPill({ method }: { method: AccessLogRow["method"] }) {
+  const { t } = useLanguage();
+  return (
+    <span className="inline-flex items-center gap-1 whitespace-nowrap rounded-md bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-700">
+      <svg viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true">
+        {method === "FACE" ? (
+          <path d="M4 7V5a1 1 0 0 1 1-1h2M13 4h2a1 1 0 0 1 1 1v2M16 13v2a1 1 0 0 1-1 1h-2M7 16H5a1 1 0 0 1-1-1v-2M10 7.5a2.5 3 0 1 0 0 6a2.5 3 0 1 0 0-6" />
+        ) : (
+          <path d="M4 4h4v4H4zM12 4h4v4h-4zM4 12h4v4H4zM12 12h1.5M16 12v1.5M12 16h4" />
+        )}
+      </svg>
+      {t(`method.${method}`)}
+    </span>
+  );
+}
+
+/** A thin bar plus the number (or a dash when there was no face match). */
+function Similarity({ value }: { value: number | null }) {
+  if (value === null) return <span className="text-slate-400">—</span>;
+  return (
+    <span className="inline-flex w-full items-center justify-end gap-2">
+      <span aria-hidden="true" className="hidden h-1.5 w-10 overflow-hidden rounded-full bg-slate-100 lg:block">
+        <span className="block h-full rounded-full bg-brand-500" style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+      </span>
+      <span className="tabular-nums">{value.toFixed(1)}%</span>
+    </span>
+  );
+}
+
+/** Phones: one card per entry instead of an 8-column table. */
+function LogCard({ row, event, now }: { row: AccessLogRow; event: string; now: Date }) {
+  const { lang } = useLanguage();
+  return (
+    <li className="space-y-1.5 rounded-lg border border-slate-200 bg-white p-3 text-sm">
+      <div className="flex items-center justify-between gap-2">
+        <LogTime iso={row.timestamp} now={now} />
+        <ResultBadge result={row.result} />
+      </div>
+      <p dir="auto" className="truncate text-start font-medium text-slate-900">{event}</p>
+      <div className="flex flex-wrap items-center gap-2 text-slate-600">
+        <span className="font-mono text-xs">{row.gate_id}</span>
+        <MethodPill method={row.method} />
+        {row.reason !== "NONE" && <span className="text-slate-500">{reasonLabel(lang, row.reason)}</span>}
+      </div>
+      <div className="flex items-center justify-between gap-2 text-slate-700">
+        <span dir="auto" className="min-w-0 truncate">{row.user_name ?? "—"}</span>
+        <Similarity value={row.similarity} />
+      </div>
+    </li>
   );
 }

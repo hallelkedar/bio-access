@@ -107,7 +107,7 @@ const SCREENS: { name: string; path: string; walk: Walk }[] = [
       await userEvent.setup().click(screen.getAllByRole("button", { name: lang === "en" ? "Edit" : "עריכה" })[0]!);
     },
   },
-  { name: "logs", path: "/admin/logs", walk: waitFor("Clear filters", "ניקוי סינון") },
+  { name: "logs", path: "/admin/logs", walk: waitFor("Quick ranges", "טווחים מהירים") }, // "Clear filters" shows only once a filter is set
   { name: "users", path: "/admin/users", walk: waitFor("All roles", "כל התפקידים") },
   { name: "settings", path: "/admin/settings", walk: waitFor("Face match threshold", "סף התאמת פנים") },
 ];

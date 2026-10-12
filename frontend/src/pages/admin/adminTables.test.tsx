@@ -124,6 +124,62 @@ describe("LogsPage", () => {
     expect(admin.listLogs).toHaveBeenLastCalledWith(expect.objectContaining({ offset: 50 }));
   });
 
+  it("active filters are removable chips with a count; Clear shows only when something is set", async () => {
+    const { router, user } = renderAt(<LogsPage />, "/?result=DENIED&gate_id=north-1");
+    await screen.findByRole("table");
+
+    expect(screen.getByText("2 entries")).toBeInTheDocument();
+    const chips = screen.getAllByRole("button", { name: /^Remove filter:/ }).map((b) => b.textContent);
+    expect(chips).toEqual(["Result: Denied×", "Gate: north-1×"]);
+
+    await user.click(screen.getByRole("button", { name: "Remove filter: Gate: north-1" }));
+    await waitFor(() => expect(router.state.location.search).toBe("?result=DENIED"));
+    await user.click(screen.getByRole("button", { name: "Clear filters" }));
+    await waitFor(() => expect(router.state.location.search).toBe(""));
+    expect(screen.queryByRole("button", { name: "Clear filters" })).not.toBeInTheDocument();
+  });
+
+  it("cells: relative time with the exact time (seconds) on focus, method, result, similarity %", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date("2026-12-01T18:08:00Z")); // 3 minutes after ROW
+    renderAt(<LogsPage />);
+    const table = await screen.findByRole("table");
+    const [, approved] = within(table).getAllByRole("row");
+
+    const time = within(approved!).getByText("3 min. ago");
+    expect(time).toHaveAccessibleDescription(/:05:00/); // seconds shown; the hour depends on the time zone
+    expect(approved).toHaveTextContent("FACE");
+    expect(approved).toHaveTextContent("99.1%");
+    expect(within(approved!).getByText("north-1")).toHaveClass("truncate");
+  });
+
+  it("loading shows skeleton rows; no results shows an empty state that can clear filters", async () => {
+    let resolve: (page: { items: AccessLogRow[]; total: number; limit: number; offset: number }) => void = () => {};
+    admin.listLogs.mockReturnValueOnce(new Promise((r) => (resolve = r)));
+    const { router, user } = renderAt(<LogsPage />, "/?method=QR");
+
+    expect(screen.getByRole("status", { name: "Loading…" })).toBeInTheDocument();
+    resolve({ items: [], total: 0, limit: PAGE_SIZE, offset: 0 });
+
+    expect(await screen.findByRole("heading", { name: "No log entries match these filters." })).toBeInTheDocument();
+    await user.click(screen.getAllByRole("button", { name: "Clear filters" }).at(-1)!);
+    await waitFor(() => expect(router.state.location.search).toBe(""));
+  });
+
+  it("phones get cards instead of the table", async () => {
+    vi.stubGlobal("matchMedia", (query: string) => ({
+      matches: query.includes("max-width: 639px"), media: query, addEventListener: vi.fn(), removeEventListener: vi.fn(),
+    }));
+    renderAt(<LogsPage />);
+
+    await screen.findByText("Dana Levi");
+    expect(screen.queryByRole("table")).not.toBeInTheDocument();
+    const cards = screen.getAllByRole("listitem");
+    expect(cards[0]).toHaveTextContent("Summer Concert");
+    expect(cards[0]).toHaveTextContent("✓ Approved");
+    vi.unstubAllGlobals();
+  });
+
   it("filtersFromParams ignores empty values", () => {
     const { filters, error } = filtersFromParams(new URLSearchParams("result=&page=1"));
 

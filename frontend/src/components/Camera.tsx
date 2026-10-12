@@ -8,9 +8,12 @@ interface CameraProps {
   autoStart?: boolean;
   /** Drawn on top of the live video once it's running (face guide, gate result…). */
   children?: ReactNode;
+  /** Shown over the video instead of it while `hidden` (the camera keeps running underneath). */
+  standby?: ReactNode;
+  hidden?: boolean;
 }
 
-export function Camera({ camera, autoStart = true, children }: CameraProps) {
+export function Camera({ camera, autoStart = true, children, standby, hidden = false }: CameraProps) {
   const { start, stop, status, error, errorKey, videoRef } = camera;
   const { t } = useLanguage();
 
@@ -37,6 +40,13 @@ export function Camera({ camera, autoStart = true, children }: CameraProps) {
         </Overlay>
       )}
       {status === "ready" && children}
+      {status === "ready" && standby !== undefined && (
+        <div aria-hidden={!hidden} data-testid="camera-standby" data-shown={hidden}
+          className={`absolute inset-0 flex flex-col items-center justify-center bg-slate-900 p-6 text-center text-slate-300 transition-opacity duration-300 motion-reduce:transition-none ${
+            hidden ? "opacity-100" : "pointer-events-none opacity-0"}`}>
+          {standby}
+        </div>
+      )}
     </div>
   );
 }

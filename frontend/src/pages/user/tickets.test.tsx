@@ -91,6 +91,27 @@ describe("MyTicketsPage", () => {
     expect(screen.queryByRole("link", { name: "Set up face entry" })).not.toBeInTheDocument();
   });
 
+  it("an enrolled ticket can change its photo", async () => {
+    tickets.myTickets.mockResolvedValue([makeTicket("VALID", { enrolled: true })]);
+    renderPage();
+
+    const summer = await card("Summer Concert");
+    expect(summer.getByRole("link", { name: "Change photo" })).toHaveAttribute("href", "/enroll/42?replace=1");
+  });
+
+  it("no 'Change photo' before enrolling, or once the event is over", async () => {
+    tickets.myTickets.mockResolvedValue([
+      makeTicket("VALID", { id: 1 }),
+      { ...makeTicket("VALID", { id: 2, enrolled: true }), event: { ...makeTicket("VALID").event, name: "Closed Show", status: "CLOSED" } },
+    ]);
+    const { user } = renderPage();
+    await card("Summer Concert");
+    await user.click(screen.getByRole("button", { name: "Past (1)" }));
+    await card("Closed Show");
+
+    expect(screen.queryByRole("link", { name: "Change photo" })).not.toBeInTheDocument();
+  });
+
   it("a used ticket shows when it entered, without a QR", async () => {
     tickets.myTickets.mockResolvedValue([makeTicket("ENTERED", { entered_at: "2026-12-01T17:42:00Z" })]);
     renderPage();

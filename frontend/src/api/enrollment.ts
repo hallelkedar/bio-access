@@ -22,3 +22,12 @@ export async function enrollFace(ticketId: number, photo: Blob): Promise<Enrollm
   });
   return data;
 }
+
+/** Change the face photo of an already enrolled ticket; the old face is deleted once the new one is saved. */
+export async function replaceFace(ticketId: number, photo: Blob): Promise<EnrollmentResult> {
+  const { data } = await api.put<EnrollmentResult>("/api/enrollment", photo, {
+    params: { ticket_id: ticketId, consent: true },
+    headers: { "Content-Type": "image/jpeg" },
+  });
+  return data;
+}

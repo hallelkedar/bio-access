@@ -2,9 +2,9 @@ import { AxiosError } from "axios";
 import { useEffect, useState } from "react";
 
 import { checkVideoFrame, hasHardFailure, type PhotoCheck, type PhotoIssue } from "../../enroll/photoChecks";
-import { Link, useParams } from "react-router";
+import { Link, useParams, useSearchParams } from "react-router";
 
-import { enrollFace, type QualityIssue } from "../../api/enrollment";
+import { enrollFace, replaceFace, type QualityIssue } from "../../api/enrollment";
 import { apiErrorMessage } from "../../api/errors";
 import { myTickets } from "../../api/tickets";
 import type { MyTicket } from "../../api/types";
@@ -30,7 +30,7 @@ export const QUALITY_TIPS: Record<QualityIssue, string> = {
 
 type Step =
   | { name: "checking" }
-  | { name: "blocked"; message: string }
+  | { name: "blocked"; message: string; canReplace?: boolean }
   | { name: "consent" }
   | { name: "camera"; tips: string[]; error: string | null }
   | { name: "review"; photo: Blob; check: PhotoCheck | null }
@@ -65,8 +65,11 @@ const LIVE_CHECK_MS = 400;
 export function EnrollPage() {
   const { t, lang } = useLanguage();
   const ticketId = Number(useParams().ticketId);
+  const wantsReplace = useSearchParams()[0].get("replace") === "1";
   const [ticket, setTicket] = useState<MyTicket | null>(null);
   const [step, setStep] = useState<Step>({ name: "checking" });
+  // Replacing only makes sense for an enrolled ticket; otherwise ?replace=1 is a normal setup.
+  const replacing = wantsReplace && ticket?.enrolled === true;
 
   useEffect(() => {
     let active = true;
@@ -76,20 +79,20 @@ export function EnrollPage() {
         const found = tickets.find((t) => t.id === ticketId);
         setTicket(found ?? null);
         if (!found) setStep({ name: "blocked", message: t("enroll.ticketNotFound") });
-        else if (found.enrolled) setStep({ name: "blocked", message: t("enroll.alreadySetUp") });
         else if (found.status !== "VALID") setStep({ name: "blocked", message: t("enroll.onlyValid") });
+        else if (found.enrolled && !wantsReplace) setStep({ name: "blocked", message: t("enroll.alreadySetUp"), canReplace: true });
         else setStep({ name: "consent" });
       })
       .catch((err) => active && setStep({ name: "blocked", message: apiErrorMessage(err, {}, lang) }));
     return () => {
       active = false;
     };
-  }, [ticketId]); // loaded once per ticket; messages use the language of that moment
+  }, [ticketId, wantsReplace]); // loaded once per ticket; messages use the language of that moment
 
   async function upload(photo: Blob, check: PhotoCheck | null) {
     setStep({ name: "uploading", photo, check });
     try {
-      await enrollFace(ticketId, photo);
+      await (replacing ? replaceFace : enrollFace)(ticketId, photo);
       setStep({ name: "done" }); // the photo is no longer referenced anywhere
     } catch (err) {
       const issues = qualityIssues(err);
@@ -106,11 +109,11 @@ export function EnrollPage() {
 
   return (
     <section className="mx-auto max-w-2xl">
-      <h1 className="text-2xl font-bold">{t("enroll.title")}</h1>
+      <h1 className="text-2xl font-bold">{t(replacing ? "enroll.replaceTitle" : "enroll.title")}</h1>
       {ticket && <p className="mt-1 text-slate-600">{ticket.event.name}</p>}
       <div className="mt-6">
         {step.name === "checking" && <Spinner />}
-        {step.name === "blocked" && <Blocked message={step.message} />}
+        {step.name === "blocked" && <Blocked message={step.message} replaceTo={step.canReplace ? `/enroll/${ticketId}?replace=1` : null} />}
         {step.name === "consent" && <Consent onAccept={() => setStep({ name: "camera", tips: [], error: null })} />}
         {step.name === "camera" && (
           <CaptureStep tips={step.tips} error={step.error} onCaptured={(photo, check) => setStep({ name: "review", photo, check })} />
@@ -124,18 +127,23 @@ export function EnrollPage() {
             onUse={() => void upload(step.photo, step.check)}
           />
         )}
-        {step.name === "done" && <Done />}
+        {step.name === "done" && <Done replaced={replacing} />}
       </div>
     </section>
   );
 }
 
-function Blocked({ message }: { message: string }) {
+function Blocked({ message, replaceTo }: { message: string; replaceTo: string | null }) {
   const { t } = useLanguage();
   return (
     <div className="space-y-4">
       <p>{message}</p>
-      <Link to="/tickets" className="text-blue-700 underline">{t("enroll.backToTickets")}</Link>
+      <div className="flex flex-wrap items-center gap-4">
+        {replaceTo && (
+          <Link to={replaceTo} className="rounded-md bg-slate-900 px-4 py-2 font-medium text-white hover:bg-slate-700">{t("enroll.changePhoto")}</Link>
+        )}
+        <Link to="/tickets" className="text-blue-700 underline">{t("enroll.backToTickets")}</Link>
+      </div>
     </div>
   );
 }
@@ -346,12 +354,12 @@ function Review({ photo, check, uploading, onRetake, onUse }: { photo: Blob; che
   );
 }
 
-function Done() {
+function Done({ replaced }: { replaced: boolean }) {
   const { t } = useLanguage();
   return (
     <div className="space-y-4 text-center">
-      <p className="text-2xl font-bold text-emerald-700">{t("enroll.doneTitle")}</p>
-      <p className="text-slate-600">{t("enroll.doneBody")}</p>
+      <p className="text-2xl font-bold text-emerald-700">{t(replaced ? "enroll.replaceDoneTitle" : "enroll.doneTitle")}</p>
+      <p className="text-slate-600">{t(replaced ? "enroll.replaceDoneBody" : "enroll.doneBody")}</p>
       <Link to="/tickets" className="inline-block rounded-md bg-slate-900 px-4 py-2 text-white">{t("enroll.myTickets")}</Link>
     </div>
   );

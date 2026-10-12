@@ -223,7 +223,13 @@ function TicketCard({ ticket, state, now, highlighted = false, onChanged }: { ti
           {usable && (
             <p className="mt-3 text-sm">
               {ticket.enrolled ? (
-                <span className="text-emerald-700">{t("tickets.faceReady")}</span>
+                <>
+                  <span className="text-emerald-700">{t("tickets.faceReady")}</span>
+                  {" · "}
+                  <Link to={`/enroll/${ticket.id}?replace=1`} className="text-blue-700 underline-offset-2 hover:underline">
+                    {t("tickets.changePhoto")}
+                  </Link>
+                </>
               ) : (
                 <Link to={`/enroll/${ticket.id}`} className="text-blue-700 underline">
                   {t("tickets.setUpFace")}

@@ -46,9 +46,9 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-function renderPage(ticketId = 42) {
+function renderPage(ticketId = 42, search = "") {
   const router = createMemoryRouter([{ path: "/enroll/:ticketId", element: <EnrollPage /> }], {
-    initialEntries: [`/enroll/${ticketId}`],
+    initialEntries: [`/enroll/${ticketId}${search}`],
   });
   render(<RouterProvider router={router} />);
   return userEvent.setup();
@@ -264,6 +264,59 @@ describe("EnrollPage: photo checks in the browser", () => {
     await user.click(screen.getByRole("button", { name: "Continue" }));
 
     expect(await screen.findByRole("status", {}, { timeout: 2000 })).toHaveTextContent("Looking good ✓");
+  });
+});
+
+describe("EnrollPage: changing the photo", () => {
+  async function captureAndUse(user: ReturnType<typeof userEvent.setup>) {
+    await consentAndCapture(user);
+    await user.click(screen.getByRole("button", { name: "Use this photo" }));
+  }
+
+  it("an enrolled ticket offers 'Change photo' instead of starting over", async () => {
+    tickets.myTickets.mockResolvedValue([makeTicket("VALID", { enrolled: true })]);
+    renderPage();
+
+    expect(await screen.findByText("Face entry is already set up for this ticket ✓")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Change photo" })).toHaveAttribute("href", "/enroll/42?replace=1");
+  });
+
+  it("replace mode asks consent again and sends the new photo with PUT", async () => {
+    tickets.myTickets.mockResolvedValue([makeTicket("VALID", { enrolled: true })]);
+    enrollment.replaceFace.mockResolvedValue({ ticket_id: 42, enrolled_at: "2026-10-12T10:00:00Z" });
+    const user = renderPage(42, "?replace=1");
+
+    expect(await screen.findByRole("heading", { name: "Change your face photo" })).toBeInTheDocument();
+    await captureAndUse(user);
+
+    expect(await screen.findByText("Your new photo is set!")).toBeInTheDocument();
+    expect(enrollment.replaceFace).toHaveBeenCalledWith(42, expect.any(Blob));
+    expect(enrollment.enrollFace).not.toHaveBeenCalled();
+  });
+
+  it("?replace=1 on a ticket without a face is a normal first setup", async () => {
+    tickets.myTickets.mockResolvedValue([makeTicket("VALID")]);
+    enrollment.enrollFace.mockResolvedValue({ ticket_id: 42, enrolled_at: "2026-10-12T10:00:00Z" });
+    const user = renderPage(42, "?replace=1");
+
+    expect(await screen.findByRole("heading", { name: "Face entry" })).toBeInTheDocument();
+    await captureAndUse(user);
+
+    expect(await screen.findByText("Face entry is ready!")).toBeInTheDocument();
+    expect(enrollment.enrollFace).toHaveBeenCalledOnce();
+    expect(enrollment.replaceFace).not.toHaveBeenCalled();
+  });
+
+  it("a rejected new photo shows the tips and keeps you in replace mode", async () => {
+    tickets.myTickets.mockResolvedValue([makeTicket("VALID", { enrolled: true })]);
+    enrollment.replaceFace.mockRejectedValue(httpError(422, { message: "photo quality is too low", issues: ["NO_FACE"] }));
+    const user = renderPage(42, "?replace=1");
+    await screen.findByRole("heading", { name: "Change your face photo" });
+
+    await captureAndUse(user);
+
+    expect(await screen.findByText("We couldn't see a face. Center your face in the oval.")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Change your face photo" })).toBeInTheDocument();
   });
 });
 

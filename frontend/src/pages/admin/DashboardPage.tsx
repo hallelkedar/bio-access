@@ -11,6 +11,7 @@ import { Meter } from "../../components/charts/Meter";
 import { StatTile } from "../../components/charts/StatTile";
 import { ErrorBox } from "../../components/ErrorBox";
 import { Spinner } from "../../components/Spinner";
+import { SkeletonText, SkeletonTiles } from "../../components/ui";
 import { localeFor } from "../../format";
 import { useAdminFeed, type FeedStatus } from "../../hooks/useAdminFeed";
 import type { TranslationKey } from "../../i18n/en";
@@ -35,6 +36,27 @@ export function bucketColumns(stats: EventStats, lang: Lang = "en"): Column[] {
   });
 }
 
+/**
+ * The event to open the dashboard on: one that is running now, else the next one to start,
+ * else any active one, else the first. (The list is newest-first, so "first ACTIVE" used to
+ * pick an event months away while today's was live.)
+ */
+export function pickDefaultEvent(events: Event[], now: Date = new Date()): Event | null {
+  const active = events.filter((e) => e.status === "ACTIVE");
+  const t = now.getTime();
+  const running = active.find((e) => new Date(e.starts_at).getTime() <= t && t < new Date(e.ends_at).getTime());
+  const next = active
+    .filter((e) => new Date(e.starts_at).getTime() > t)
+    .sort((a, b) => new Date(a.starts_at).getTime() - new Date(b.starts_at).getTime())[0];
+  return running ?? next ?? active[0] ?? events[0] ?? null;
+}
+
+/** "15%" / "12.5%"; "—" when there is no capacity to divide by. */
+export function occupancyPercent(entered: number, capacity: number, lang: Lang): string {
+  if (capacity <= 0) return "—";
+  return new Intl.NumberFormat(localeFor(lang), { style: "percent", maximumFractionDigits: 1 }).format(entered / capacity);
+}
+
 export function DashboardPage({ refreshDelayMs = 1000 }: { refreshDelayMs?: number }) {
   const { t, lang } = useLanguage();
   const [events, setEvents] = useState<Event[] | null>(null);
@@ -43,12 +65,13 @@ export function DashboardPage({ refreshDelayMs = 1000 }: { refreshDelayMs?: numb
   const [error, setError] = useState<string | null>(null);
   const [showAllReasons, setShowAllReasons] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+  const number = new Intl.NumberFormat(localeFor(lang));
 
   useEffect(() => {
     listAllEvents()
       .then((all) => {
         setEvents(all);
-        setEventId((all.find((e) => e.status === "ACTIVE") ?? all[0])?.id ?? null);
+        setEventId(pickDefaultEvent(all)?.id ?? null);
       })
       .catch((err) => setError(apiErrorMessage(err, {}, lang)));
   }, []);
@@ -96,12 +119,12 @@ export function DashboardPage({ refreshDelayMs = 1000 }: { refreshDelayMs?: numb
 
   return (
     <section className="space-y-6">
-      <div className="flex flex-wrap items-center gap-4">
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
         <h1 className="text-2xl font-bold">{t("dash.title")}</h1>
-        <label className="flex items-center gap-2 text-sm">
-          <span className="text-slate-600">{t("dash.event")}</span>
+        <label className="flex w-full min-w-0 items-center gap-2 text-sm sm:w-auto sm:max-w-md sm:flex-1">
+          <span className="shrink-0 text-slate-600">{t("dash.event")}</span>
           <select value={eventId ?? ""} onChange={(e) => setEventId(Number(e.target.value))}
-            className="rounded-md border border-slate-300 px-2 py-1">
+            className="w-full min-w-0 truncate rounded-md border border-slate-300 px-2 py-1">
             {events.map((e) => <option key={e.id} value={e.id}>{e.name} ({t(`eventStatus.${e.status}`)})</option>)}
           </select>
         </label>
@@ -109,25 +132,28 @@ export function DashboardPage({ refreshDelayMs = 1000 }: { refreshDelayMs?: numb
       </div>
       <ErrorBox message={error} />
       {!stats ? (
-        <Spinner label={t("dash.loadingNumbers")} />
+        <div className="space-y-6">
+          <SkeletonTiles count={4} />
+          <SkeletonText lines={3} className="rounded-lg border border-slate-200 bg-white p-4" />
+        </div>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <StatTile label={t("dash.inside")} value={String(stats.occupancy.entered)} />
-            <StatTile label={t("dash.approved")} value={String(stats.decisions.approved)} />
-            <StatTile label={t("dash.denied")} value={String(stats.decisions.denied)} />
-            <StatTile label={t("dash.occupancy")} value={`${stats.occupancy.percent}%`} />
+            <StatTile label={t("dash.inside")} value={number.format(stats.occupancy.entered)} />
+            <StatTile label={t("dash.approved")} value={number.format(stats.decisions.approved)} />
+            <StatTile label={t("dash.denied")} value={number.format(stats.decisions.denied)} />
+            <StatTile label={t("dash.occupancy")} value={occupancyPercent(stats.occupancy.entered, stats.occupancy.capacity, lang)} />
           </div>
           <Meter entered={stats.occupancy.entered} sold={stats.occupancy.sold} capacity={stats.occupancy.capacity} />
-          <div className="grid gap-6 lg:grid-cols-2">
-            <ColumnChart title={t("dash.entriesTitle")} columns={bucketColumns(stats, lang)} unit={t("dash.entriesUnit")} />
-            <div className="space-y-2">
-              <BarList title={t("dash.denialsTitle")} rows={reasonRows(stats.decisions.denied_by_reason, showAllReasons, lang)
-                .map((r) => ({ key: r.reason, label: r.label, value: r.value }))} empty={t("dash.noDenials")} />
-              <button type="button" onClick={() => setShowAllReasons((s) => !s)} className="text-sm text-blue-700 underline">
-                {showAllReasons ? t("dash.hideEmptyReasons") : t("dash.showAllReasons")}
-              </button>
-            </div>
+          <div className="grid items-stretch gap-6 lg:grid-cols-2">
+            <ColumnChart title={t("dash.entriesTitle")} columns={bucketColumns(stats, lang)} unit={t("dash.entriesUnit")} empty={t("dash.noEntries")} />
+            <BarList title={t("dash.denialsTitle")} rows={reasonRows(stats.decisions.denied_by_reason, showAllReasons, lang)
+              .map((r) => ({ key: r.reason, label: r.label, value: r.value }))} empty={t("dash.noDenials")}
+              footer={
+                <button type="button" onClick={() => setShowAllReasons((v) => !v)} className="text-sm text-blue-700 underline">
+                  {showAllReasons ? t("dash.hideEmptyReasons") : t("dash.showAllReasons")}
+                </button>
+              } />
           </div>
         </>
       )}
@@ -148,16 +174,29 @@ function FeedPill({ status }: { status: FeedStatus }) {
   return <span role="status" className={`rounded-full px-3 py-1 text-xs font-medium ${PILL[status].style}`}>{t(PILL[status].textKey)}</span>;
 }
 
+/** Newest first, scrolls inside its own box; "Pause" freezes the list while you read it. */
 function LiveFeed({ events }: { events: AccessEvent[] }) {
   const { t, lang } = useLanguage();
+  const [frozen, setFrozen] = useState<AccessEvent[] | null>(null);
+  const shown = frozen ?? events;
+  const waiting = frozen ? events.length - frozen.length : 0;
   return (
     <div className="rounded-lg border border-slate-200 bg-white p-4">
-      <h2 className="font-semibold">{t("dash.liveTitle")}</h2>
-      {events.length === 0 ? (
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="font-semibold">{t("dash.liveTitle")}</h2>
+        <div className="flex items-center gap-3 text-sm">
+          {frozen && waiting > 0 && <span className="text-slate-500">{t("dash.newWhilePaused", { count: waiting })}</span>}
+          <button type="button" aria-pressed={frozen !== null} onClick={() => setFrozen((f) => (f ? null : events))}
+            className="rounded-md border border-slate-300 px-2.5 py-1 font-medium text-slate-700 hover:bg-slate-50">
+            {frozen ? t("dash.resume") : t("dash.pause")}
+          </button>
+        </div>
+      </div>
+      {shown.length === 0 ? (
         <p className="mt-2 text-sm text-slate-500">{t("dash.waiting")}</p>
       ) : (
-        <ul aria-label={t("dash.liveTitle")} className="mt-3 divide-y divide-slate-100 text-sm">
-          {events.map((e) => (
+        <ul aria-label={t("dash.liveTitle")} className="mt-3 max-h-80 divide-y divide-slate-100 overflow-y-auto text-sm">
+          {shown.map((e) => (
             <li key={`${e.timestamp}-${e.gate_id}-${e.ticket_id ?? "x"}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
               <span className="tabular-nums text-slate-500">{timeFormat(lang).format(new Date(e.timestamp))}</span>
               <span className={e.result === "APPROVED" ? "text-emerald-700" : "text-red-700"}>

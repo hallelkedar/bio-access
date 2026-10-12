@@ -22,6 +22,16 @@ export function ticks(max: number, count = 4): number[] {
   return Array.from({ length: count + 1 }, (_, i) => (max / count) * i);
 }
 
+/**
+ * Y axis for counts: a whole-number top and whole, unique ticks that divide it evenly
+ * (1 → 0,1 · 3 → 0..3 · 5 → 0..5 · 10 → 0,2,…,10 · 20 → 0,5,…,20 · 12,000 → steps of 2,500…).
+ */
+export function countAxis(value: number): { max: number; ticks: number[] } {
+  const max = Math.max(1, Math.ceil(niceMax(value)));
+  const count = max <= 4 ? max : [4, 5, 2].find((n) => max % n === 0) ?? 1;
+  return { max, ticks: Array.from({ length: count + 1 }, (_, i) => (max / count) * i) };
+}
+
 /** Which x-axis labels to show so at most `maxLabels` appear (first one always). */
 export function labelIndices(total: number, maxLabels: number): Set<number> {
   const step = Math.max(1, Math.ceil(total / Math.max(1, maxLabels)));

@@ -15,6 +15,7 @@ import { composeLocation, findCity, splitLocation } from "../../data/cityMatch";
 import { useLanguage } from "../../i18n/LanguageProvider";
 import type { TranslationKey } from "../../i18n/en";
 import type { Lang } from "../../i18n/translate";
+import { CARD_CELL } from "./cardCells";
 
 const STATUS_TONE: Record<Event["status"], BadgeTone> = {
   DRAFT: "neutral",
@@ -181,9 +182,6 @@ export function EventsAdminPage() {
   );
 }
 
-/** On small screens each cell becomes a labelled line of a card; `data-label` gives the label. */
-const CELL = "px-3 py-2 max-sm:flex max-sm:items-baseline max-sm:justify-between max-sm:gap-3 max-sm:py-1 max-sm:before:text-xs max-sm:before:text-slate-500 max-sm:before:content-[attr(data-label)]";
-
 interface EventRowProps {
   event: Event;
   busy: boolean;
@@ -217,17 +215,17 @@ function EventRow({ event, busy, error, onEdit, onActivate, onClose, onDelete }:
           <Place location={event.location} className="text-slate-500" />
           <ErrorBox message={error} />
         </td>
-        <td className={`${CELL} whitespace-nowrap`} data-label={t("aevents.col.starts")}>{formatDateTime(event.starts_at, lang)}</td>
-        <td className={CELL} data-label={t("aevents.col.status")}>
+        <td className={`${CARD_CELL} whitespace-nowrap`} data-label={t("aevents.col.starts")}>{formatDateTime(event.starts_at, lang)}</td>
+        <td className={CARD_CELL} data-label={t("aevents.col.status")}>
           <Badge tone={STATUS_TONE[event.status]} className={event.status === "CLOSED" ? "opacity-70" : ""}>
             {event.status === "ACTIVE" && <span className="h-1.5 w-1.5 rounded-full bg-ok-500" aria-hidden="true" />}
             {t(`aevents.badge.${event.status}`)}
           </Badge>
         </td>
-        <td className={`${CELL} whitespace-nowrap text-end tabular-nums`} data-label={t("aevents.col.price")}>
+        <td className={`${CARD_CELL} whitespace-nowrap text-end tabular-nums`} data-label={t("aevents.col.price")}>
           {free ? <span className="font-medium text-ok-700">{t("aevents.free")}</span> : formatPrice(event.price_cents, event.currency, lang)}
         </td>
-        <td className={`${CELL} text-end tabular-nums`} data-label={t("aevents.col.capacity")}>{new Intl.NumberFormat(localeFor(lang)).format(event.capacity)}</td>
+        <td className={`${CARD_CELL} text-end tabular-nums`} data-label={t("aevents.col.capacity")}>{new Intl.NumberFormat(localeFor(lang)).format(event.capacity)}</td>
         <td className="px-3 py-2 max-sm:block max-sm:pt-2">
           <div className="flex flex-nowrap justify-end gap-2 max-sm:justify-start" aria-label={t("aevents.actionsFor", { name: event.name })}>
             <Button variant="secondary" size="sm" onClick={onEdit} disabled={busy} className="max-sm:min-h-11">{t("aevents.edit")}</Button>

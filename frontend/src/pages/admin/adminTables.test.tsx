@@ -6,12 +6,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as adminApi from "../../api/admin";
 import type { AccessLogRow } from "../../api/admin";
 import * as adminEvents from "../../api/adminEvents";
+import { ToastProvider } from "../../components/ui";
 import { fromLocalInput } from "../../format";
 import { httpError, makeUser } from "../../test/factories";
 import { makeEvent } from "../../test/factories.events";
 import { filtersFromParams, LogsPage, logsCsv, PAGE_SIZE } from "./LogsPage";
-import { SettingsPage } from "./SettingsPage";
-import { UsersPage } from "./UsersPage";
+import { SettingsPage, trackPercent } from "./SettingsPage";
+import { nextSort, sortUsers, UsersPage } from "./UsersPage";
 
 vi.mock("../../api/admin");
 vi.mock("../../api/adminEvents");
@@ -39,7 +40,7 @@ afterEach(() => {
 
 function renderAt(element: React.ReactElement, path = "/") {
   const router = createMemoryRouter([{ path: "*", element }], { initialEntries: [path] });
-  render(<RouterProvider router={router} />);
+  render(<ToastProvider><RouterProvider router={router} /></ToastProvider>); // as in App.tsx
   return { router, user: userEvent.setup() };
 }
 
@@ -273,20 +274,35 @@ describe("SettingsPage", () => {
     admin.getSettings.mockResolvedValue({ face_match_threshold: 95, default_face_match_threshold: 95, source: "default" });
   });
 
-  it("slider and number stay in sync; save applies and confirms", async () => {
+  const unsavedBar = () => screen.queryByRole("region", { name: "Unsaved changes" });
+
+  it("slider and number stay in sync; the unsaved bar saves and toasts", async () => {
     admin.updateThreshold.mockResolvedValue({ face_match_threshold: 97.5, default_face_match_threshold: 95, source: "database" });
     const { user } = renderAt(<SettingsPage />);
     const slider = await screen.findByLabelText("Threshold slider");
-    expect(screen.getByText(/Using the default/)).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(screen.getByText("Using the default")).toBeInTheDocument();
+    expect(unsavedBar()).toBeNull();
 
     fireEvent.change(slider, { target: { value: "97.5" } });
     expect(screen.getByLabelText("Threshold value")).toHaveValue(97.5);
-    await user.click(screen.getByRole("button", { name: "Save" }));
+    await user.click(within(unsavedBar()!).getByRole("button", { name: "Save" }));
 
     expect(admin.updateThreshold).toHaveBeenCalledWith(97.5);
-    expect(await screen.findByRole("status")).toHaveTextContent("applies to the next scan");
-    expect(screen.getByText(/Custom value/)).toBeInTheDocument();
+    expect(await screen.findByText("Saved — applies to the next scan.")).toBeInTheDocument();
+    expect(screen.getByText("Custom value")).toBeInTheDocument();
+    expect(unsavedBar()).toBeNull();
+  });
+
+  it("discard puts the saved value back without calling the API", async () => {
+    const { user } = renderAt(<SettingsPage />);
+    const number = await screen.findByLabelText("Threshold value");
+
+    fireEvent.change(number, { target: { value: "90" } });
+    await user.click(within(unsavedBar()!).getByRole("button", { name: "Discard" }));
+
+    expect(number).toHaveValue(95);
+    expect(unsavedBar()).toBeNull();
+    expect(admin.updateThreshold).not.toHaveBeenCalled();
   });
 
   it("blocks values outside 80-100", async () => {
@@ -296,20 +312,28 @@ describe("SettingsPage", () => {
     fireEvent.change(number, { target: { value: "70" } });
 
     expect(screen.getByRole("alert")).toHaveTextContent("between 80 and 100");
-    expect(screen.getByRole("button", { name: "Save" })).toBeDisabled();
+    expect(within(unsavedBar()!).getByRole("button", { name: "Save" })).toBeDisabled();
   });
 
-  it("reset to default saves the .env value", async () => {
+  it("reset to default asks first, then saves the .env value", async () => {
     admin.getSettings.mockResolvedValue({ face_match_threshold: 99, default_face_match_threshold: 95, source: "database" });
     admin.updateThreshold.mockResolvedValue({ face_match_threshold: 95, default_face_match_threshold: 95, source: "database" });
     const { user } = renderAt(<SettingsPage />);
 
     await user.click(await screen.findByRole("button", { name: "Reset to default" }));
+    const dialog = screen.getByRole("dialog", { name: "Reset to the default (95%)?" });
+    expect(admin.updateThreshold).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: "Reset" }));
 
     expect(admin.updateThreshold).toHaveBeenCalledWith(95);
   });
-});
 
+  it("trackPercent places a value on the 80-100 track", () => {
+    expect(trackPercent(80)).toBe("0%");
+    expect(trackPercent(95)).toBe("75%");
+    expect(trackPercent(120)).toBe("100%");
+  });
+});
 
 describe("UsersPage role changes", () => {
   const staff = makeUser("USER", { id: 12, full_name: "Dana Levi", email: "dana@example.com" });
@@ -319,24 +343,27 @@ describe("UsersPage role changes", () => {
     admin.listUsers.mockResolvedValue({ items: [staff, me], total: 2, limit: 50, offset: 0 });
   });
 
-  it("promotes after confirmation and updates the row", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+  it("promotes after confirmation, updates the row and toasts", async () => {
     admin.changeUserRole.mockResolvedValue({ ...staff, role: "GATEKEEPER" });
     const { user } = renderAt(<UsersPage searchDelayMs={0} />);
 
     await user.selectOptions(await screen.findByLabelText("Role of Dana Levi"), "GATEKEEPER");
+    const dialog = screen.getByRole("dialog", { name: /Make .*Dana Levi.* a Gatekeeper\?/ });
+    expect(dialog).toHaveTextContent("open the gate scanner");
+    await user.click(within(dialog).getByRole("button", { name: "Change role" }));
 
-    expect(window.confirm).toHaveBeenCalledWith("Make Dana Levi a Gatekeeper?");
     expect(admin.changeUserRole).toHaveBeenCalledWith(12, "GATEKEEPER");
     await waitFor(() => expect(screen.getByLabelText("Role of Dana Levi")).toHaveValue("GATEKEEPER"));
+    expect(await screen.findByText(/Dana Levi.* is now: Gatekeeper\./)).toBeInTheDocument();
   });
 
   it("cancelling the confirmation changes nothing", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(false);
     const { user } = renderAt(<UsersPage searchDelayMs={0} />);
 
     await user.selectOptions(await screen.findByLabelText("Role of Dana Levi"), "ADMIN");
+    await user.click(screen.getByRole("button", { name: "Keep current role" }));
 
+    expect(screen.queryByRole("dialog")).toBeNull();
     expect(admin.changeUserRole).not.toHaveBeenCalled();
     expect(screen.getByLabelText("Role of Dana Levi")).toHaveValue("USER");
   });
@@ -347,14 +374,65 @@ describe("UsersPage role changes", () => {
     expect(await screen.findByLabelText("Role of Me Admin")).toBeDisabled();
   });
 
-  it("shows the server's refusal", async () => {
-    vi.spyOn(window, "confirm").mockReturnValue(true);
+  it("rolls back and shows the server's refusal", async () => {
     admin.changeUserRole.mockRejectedValue(httpError(404, "user not found"));
     const { user } = renderAt(<UsersPage searchDelayMs={0} />);
 
     await user.selectOptions(await screen.findByLabelText("Role of Dana Levi"), "GATEKEEPER");
+    await user.click(screen.getByRole("button", { name: "Change role" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("User not found");
     expect(screen.getByLabelText("Role of Dana Levi")).toHaveValue("USER");
+  });
+});
+
+describe("UsersPage sorting", () => {
+  const users = [
+    makeUser("USER", { id: 1, full_name: "bob", email: "z@example.com", created_at: "2026-10-02T10:00:00Z" }),
+    makeUser("USER", { id: 2, full_name: "Alice", email: "a@example.com", created_at: "2026-10-03T10:00:00Z" }),
+    makeUser("USER", { id: 3, full_name: "Carol", email: "m@example.com", created_at: "2026-10-01T10:00:00Z" }),
+  ];
+  const names = (list: typeof users) => list.map((u) => u.full_name);
+
+  it("sortUsers orders by name (ignoring case), email or join date; null keeps the server order", () => {
+    expect(names(sortUsers(users, null, "en"))).toEqual(["bob", "Alice", "Carol"]);
+    expect(names(sortUsers(users, { key: "name", dir: "asc" }, "en"))).toEqual(["Alice", "bob", "Carol"]);
+    expect(names(sortUsers(users, { key: "email", dir: "desc" }, "en"))).toEqual(["bob", "Carol", "Alice"]);
+    expect(names(sortUsers(users, { key: "joined", dir: "asc" }, "en"))).toEqual(["Carol", "bob", "Alice"]);
+  });
+
+  it("nextSort goes ascending, then descending, and restarts on a new column", () => {
+    expect(nextSort(null, "name")).toEqual({ key: "name", dir: "asc" });
+    expect(nextSort({ key: "name", dir: "asc" }, "name")).toEqual({ key: "name", dir: "desc" });
+    expect(nextSort({ key: "name", dir: "desc" }, "name")).toEqual({ key: "name", dir: "asc" });
+    expect(nextSort({ key: "name", dir: "desc" }, "email")).toEqual({ key: "email", dir: "asc" });
+  });
+
+  it("clicking a header sorts the rows and sets aria-sort", async () => {
+    admin.listUsers.mockResolvedValue({ items: users, total: 3, limit: 50, offset: 0 });
+    const { user } = renderAt(<UsersPage searchDelayMs={0} />);
+    const table = await screen.findByRole("table");
+    const nameHeader = within(table).getByRole("columnheader", { name: "Name" });
+    expect(nameHeader).toHaveAttribute("aria-sort", "none");
+
+    await user.click(within(nameHeader).getByRole("button"));
+    expect(nameHeader).toHaveAttribute("aria-sort", "ascending");
+    const firstRow = () => within(table).getAllByRole("row")[1]!;
+    expect(firstRow()).toHaveTextContent("Alice");
+
+    await user.click(within(nameHeader).getByRole("button"));
+    expect(nameHeader).toHaveAttribute("aria-sort", "descending");
+    expect(firstRow()).toHaveTextContent("Carol");
+  });
+
+  it("the clear button empties the search box", async () => {
+    admin.listUsers.mockResolvedValue({ items: users, total: 3, limit: 50, offset: 0 });
+    const { user } = renderAt(<UsersPage searchDelayMs={0} />);
+    const search = await screen.findByLabelText("Search users");
+
+    await user.type(search, "bo");
+    await user.click(screen.getByRole("button", { name: "Clear search" }));
+
+    expect(search).toHaveValue("");
   });
 });

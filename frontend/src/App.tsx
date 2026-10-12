@@ -68,48 +68,46 @@ function Header() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/75 backdrop-blur-md supports-[backdrop-filter]:bg-white/60">
-      <nav aria-label={t("nav.main")} className={`mx-auto flex ${isAdminPath(pathname) ? "max-w-none" : "max-w-5xl"} flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3`}>
-        <Link to="/" className="flex items-center gap-2 text-lg font-semibold tracking-tight text-slate-900">
+      {/* One row at every width: on phones the links (and Log out) drop into a panel under the bar. */}
+      <nav aria-label={t("nav.main")} className={`relative mx-auto flex ${isAdminPath(pathname) ? "max-w-none" : "max-w-5xl"} items-center gap-x-6 px-4 py-3`}>
+        <Link to="/" className="flex shrink-0 items-center gap-2 text-lg font-semibold tracking-tight text-slate-900">
           <LogoMark />
           {t("app.name")}
         </Link>
         {items.length > 0 && (
-          <>
-            <button
-              ref={menuButton}
-              type="button"
-              aria-expanded={menuOpen}
-              aria-controls="main-nav-links"
-              onClick={() => setMenuOpen((open) => !open)}
-              className="order-last ms-auto rounded-md p-2 text-slate-700 hover:bg-slate-100 md:hidden"
-            >
-              <span className="sr-only">{t("nav.menu")}</span>
-              <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-                {menuOpen ? <path d="M5 5l10 10M15 5L5 15" /> : <path d="M3 6h14M3 10h14M3 14h14" />}
-              </svg>
-            </button>
-            <div
-              id="main-nav-links"
-              className={`${menuOpen ? "flex" : "hidden"} w-full flex-col gap-1 border-t border-slate-200/70 pt-2 md:flex md:w-auto md:flex-row md:items-center md:gap-5 md:border-0 md:pt-0`}
-            >
-              {items.map((item) => (
-                <NavLink
-                  key={item.to}
-                  to={item.to}
-                  end={item.end}
-                  className={({ isActive }) =>
-                    `rounded-md px-2 py-1.5 text-sm transition-colors md:px-1 md:py-0 ${
-                      isActive ? "font-semibold text-slate-900" : "text-slate-600 hover:text-slate-900"
-                    }`
-                  }
-                >
-                  {t(item.labelKey)}
-                </NavLink>
-              ))}
-            </div>
-          </>
+          <div
+            id="main-nav-links"
+            className={`${menuOpen ? "flex" : "hidden"} absolute inset-x-0 top-full flex-col gap-1 border-b border-slate-200 bg-white px-4 pb-3 pt-2 shadow-card md:static md:flex md:flex-row md:items-center md:gap-5 md:border-0 md:bg-transparent md:p-0 md:shadow-none`}
+          >
+            {items.map((item) => (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                end={item.end}
+                className={({ isActive }) =>
+                  `rounded-md px-2 py-2.5 text-sm transition-colors max-md:min-h-11 md:px-1 md:py-0 ${
+                    isActive ? "font-semibold text-slate-900" : "text-slate-600 hover:text-slate-900"
+                  }`
+                }
+              >
+                {t(item.labelKey)}
+              </NavLink>
+            ))}
+            {/* Phones only (rendered while the menu is open): the bar keeps just the main action. */}
+            {menuOpen && (user ? (
+              <button type="button" onClick={logout}
+                className="mt-1 min-h-11 rounded-md border-t border-slate-200/70 px-2 pt-2 text-start text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-brand-500 md:hidden">
+                {t("header.logOut")}
+              </button>
+            ) : (
+              <Link to="/login"
+                className="mt-1 flex min-h-11 items-center rounded-md border-t border-slate-200/70 px-2 pt-2 text-sm font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-brand-500 md:hidden">
+                {t("header.logIn")}
+              </Link>
+            ))}
+          </div>
         )}
-        <div className="ms-auto flex items-center gap-3 text-sm">
+        <div className="ms-auto flex min-w-0 items-center gap-2 text-sm sm:gap-3">
           <LanguageToggle className="[view-transition-name:lang-toggle]" />
           {user ? (
             <>
@@ -119,20 +117,36 @@ function Header() {
                   {t(`role.${user.role}`)}
                 </span>
               </span>
+              {/* With a menu on phones, Log out lives inside it; admins have no menu, so it stays here. */}
               <button type="button" onClick={logout}
-                className="rounded-md px-2 py-1 font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-brand-500">
+                className={`${items.length > 0 ? "max-md:hidden" : ""} rounded-md px-2 py-1 font-medium text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-brand-500`}>
                 {t("header.logOut")}
               </button>
             </>
           ) : (
             <>
-              <Link to="/login" className="rounded-md px-2 py-1 font-medium text-slate-700 hover:bg-slate-100">
+              <Link to="/login" className={`${items.length > 0 ? "max-md:hidden" : ""} whitespace-nowrap rounded-md px-2 py-1 font-medium text-slate-700 hover:bg-slate-100`}>
                 {t("header.logIn")}
               </Link>
-              <Link to="/register" className="rounded-md bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-700">
+              <Link to="/register" className="whitespace-nowrap rounded-md bg-slate-900 px-3 py-1.5 font-medium text-white hover:bg-slate-700">
                 {t("header.register")}
               </Link>
             </>
+          )}
+          {items.length > 0 && (
+            <button
+              ref={menuButton}
+              type="button"
+              aria-expanded={menuOpen}
+              aria-controls="main-nav-links"
+              onClick={() => setMenuOpen((open) => !open)}
+              className="grid h-11 w-11 shrink-0 place-items-center rounded-md text-slate-700 hover:bg-slate-100 focus-visible:outline-2 focus-visible:outline-brand-500 md:hidden"
+            >
+              <span className="sr-only">{t("nav.menu")}</span>
+              <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                {menuOpen ? <path d="M5 5l10 10M15 5L5 15" /> : <path d="M3 6h14M3 10h14M3 14h14" />}
+              </svg>
+            </button>
           )}
         </div>
       </nav>

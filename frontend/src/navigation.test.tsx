@@ -87,6 +87,34 @@ describe("mobile menu", () => {
     await user.click(header().getByRole("link", { name: "My tickets" }));
     await waitFor(() => expect(button).toHaveAttribute("aria-expanded", "false"));
   });
+
+  it("on phones Log out moves into the open menu; the bar's own button is desktop-only", async () => {
+    const { user } = await signedInAs("USER", "/events");
+    const links = within(document.getElementById("main-nav-links")!);
+    expect(header().getByRole("button", { name: "Log out" })).toHaveClass("max-md:hidden");
+    expect(links.queryByRole("button", { name: "Log out" })).not.toBeInTheDocument();
+
+    await user.click(header().getByRole("button", { name: "Menu" }));
+    await user.click(links.getByRole("button", { name: "Log out" }));
+
+    await header().findByRole("link", { name: "Log in" });
+  });
+
+  it("guests keep Register in the bar; Log in moves into the open menu on phones", async () => {
+    const { user } = renderApp("/");
+    expect(header().getByRole("link", { name: "Log in" })).toHaveClass("max-md:hidden");
+    expect(header().getByRole("link", { name: "Register" })).not.toHaveClass("max-md:hidden");
+
+    await user.click(header().getByRole("button", { name: "Menu" }));
+
+    expect(within(document.getElementById("main-nav-links")!).getByRole("link", { name: "Log in" })).toHaveAttribute("href", "/login");
+  });
+
+  it("admins have no menu, so their Log out stays visible on phones", async () => {
+    await signedInAs("ADMIN", "/admin");
+
+    expect(header().getByRole("button", { name: "Log out" })).not.toHaveClass("max-md:hidden");
+  });
 });
 
 describe("landing page buttons follow the role", () => {

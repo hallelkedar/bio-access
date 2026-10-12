@@ -6,6 +6,10 @@ const BACKEND = "http://localhost:8000";
 
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    // Emit fonts and images as files: the CSP blocks data: URIs for fonts.
+    assetsInlineLimit: 0,
+  },
   server: {
     port: 5173,
     // One origin for the browser: the dev server forwards API calls to the backend,

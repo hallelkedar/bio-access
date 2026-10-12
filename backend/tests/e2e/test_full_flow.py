@@ -37,7 +37,7 @@ def create_live_event(client: TestClient, admin: dict[str, str], capacity: int =
     starts = datetime.now(UTC) + timedelta(minutes=30)
     body = {
         "name": "Graduation Party",
-        "location": "Tel Aviv",
+        "location": "Hangar 11, Tel Aviv",
         "starts_at": starts.isoformat(),
         "ends_at": (starts + timedelta(hours=4)).isoformat(),
         "capacity": capacity,

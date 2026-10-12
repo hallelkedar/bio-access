@@ -40,3 +40,20 @@ def list_open_for_ticket(db: Session, ticket_id: int) -> list[Payment]:
         .order_by(Payment.id.desc())
     )
     return list(db.scalars(query))
+
+
+def lock_open_for_ticket(db: Session, ticket_id: int) -> list[Payment]:
+    """Open checkouts of this ticket, locked (FOR UPDATE NOWAIT).
+
+    NOWAIT: if a webhook is recording one of them right now, fail at once
+    (sqlalchemy OperationalError) instead of waiting and risking a deadlock, because
+    the webhook takes the payment lock first and the ticket lock second.
+    """
+    query = (
+        select(Payment)
+        .where(Payment.ticket_id == ticket_id, Payment.status == PaymentStatus.CREATED)
+        .order_by(Payment.id)
+        .with_for_update(nowait=True)
+    )
+    return list(db.scalars(query.execution_options(populate_existing=True)))
+

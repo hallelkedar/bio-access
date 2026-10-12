@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { labelIndices, niceMax, reasonRows, ticks } from "./chartMath";
+import { countAxis, labelIndices, niceMax, reasonRows, ticks } from "./chartMath";
 
 describe("chart math", () => {
   it.each([
@@ -17,6 +17,21 @@ describe("chart math", () => {
 
   it("ticks split the axis evenly", () => {
     expect(ticks(20)).toEqual([0, 5, 10, 15, 20]);
+  });
+
+  it.each([
+    [0, 1, [0, 1]],
+    [1, 1, [0, 1]],
+    [2.2, 3, [0, 1, 2, 3]], // niceMax 2.5 → a whole top
+    [5, 5, [0, 1, 2, 3, 4, 5]],
+    [9, 10, [0, 2, 4, 6, 8, 10]],
+    [17, 20, [0, 5, 10, 15, 20]],
+    [12_345, 20_000, [0, 5000, 10_000, 15_000, 20_000]],
+  ])("count axis for %d: top %d, ticks %j (whole, unique)", (value, max, ticks) => {
+    const axis = countAxis(value);
+    expect(axis).toEqual({ max, ticks });
+    expect(axis.ticks.every(Number.isInteger)).toBe(true);
+    expect(new Set(axis.ticks).size).toBe(axis.ticks.length);
   });
 
   it("thins x labels to fit", () => {

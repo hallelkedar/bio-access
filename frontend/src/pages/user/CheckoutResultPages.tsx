@@ -1,11 +1,13 @@
-import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useEffect, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router";
 
 import { apiErrorMessage } from "../../api/errors";
 import { myTickets, refreshPayment, startCheckout } from "../../api/tickets";
 import type { TicketStatus } from "../../api/types";
 import { ErrorBox } from "../../components/ErrorBox";
 import { Spinner } from "../../components/Spinner";
+import { Button, ButtonLink, Card, Confetti, ResultIcon } from "../../components/ui";
+import { useLanguage } from "../../i18n/LanguageProvider";
 import { redirectTo } from "../../navigation";
 
 type Outcome = "waiting" | "confirming" | "ready" | "slow" | "missing";
@@ -27,6 +29,7 @@ export function CheckoutSuccessPage({
   refreshAtMs?: number[];
 }) {
   const ticketId = Number(useSearchParams()[0].get("ticket_id"));
+  const { t } = useLanguage();
   const [outcome, setOutcome] = useState<Outcome>("waiting");
   const [round, setRound] = useState(0); // "Check again" starts a new round
   // A string key: an array prop is a new object on every render and would restart the loop.
@@ -71,40 +74,43 @@ export function CheckoutSuccessPage({
   }, [ticketId, pollMs, maxWaitMs, refreshKey, round]);
 
   return (
-    <section className="mx-auto max-w-md text-center">
-      {outcome === "waiting" && <Spinner label="Confirming your payment…" />}
-      {outcome === "confirming" && <Spinner label="Confirming with the payment provider…" />}
+    <ResultCard>
+      {outcome === "waiting" && <Spinner label={t("checkout.confirming")} />}
+      {outcome === "confirming" && <Spinner label={t("checkout.confirmingProvider")} />}
       {outcome === "ready" && (
         <>
-          <h1 className="text-2xl font-bold text-emerald-700">Payment received!</h1>
-          <p className="mt-2 text-slate-600">Your ticket is ready. A confirmation email is on its way.</p>
-          <Link to="/tickets" className="mt-6 inline-block rounded-md bg-slate-900 px-4 py-2 text-white">
-            My tickets
-          </Link>
+          <Confetti />
+          <ResultIcon tone="ok" path="M15 27l7 7 15-16" />
+          <h1 className="mt-5 text-2xl font-bold text-ok-700">{t("checkout.receivedTitle")}</h1>
+          <p className="mt-2 text-muted">{t("checkout.receivedBody")}</p>
+          <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+            <ButtonLink to="/tickets" className="min-h-11">{t("checkout.myTickets")}</ButtonLink>
+            <ButtonLink to="/events" variant="secondary" className="min-h-11">{t("checkout.browseEvents")}</ButtonLink>
+          </div>
         </>
       )}
       {outcome === "slow" && (
         <>
-          <h1 className="text-2xl font-bold">Payment is being processed</h1>
-          <p className="mt-2 text-slate-600">This can take a minute. If you were charged, your ticket will appear soon.</p>
-          <button type="button" onClick={() => setRound((r) => r + 1)}
-            className="mt-6 rounded-md bg-slate-900 px-4 py-2 text-white">
-            Check again
-          </button>
+          <ResultIcon tone="warn" path="M26 16v11l7 4" circle />
+          <h1 className="mt-5 text-2xl font-bold">{t("checkout.slowTitle")}</h1>
+          <p className="mt-2 text-muted">{t("checkout.slowBody")}</p>
+          <Button onClick={() => setRound((r) => r + 1)} className="mt-6 min-h-11">{t("checkout.checkAgain")}</Button>
         </>
       )}
       {outcome === "missing" && (
         <>
-          <h1 className="text-2xl font-bold">Ticket not found</h1>
-          <Link to="/events" className="mt-4 inline-block text-blue-700 underline">Back to events</Link>
+          <ResultIcon tone="neutral" path="M26 17v11M26 35v.5" circle />
+          <h1 className="mt-5 text-2xl font-bold">{t("checkout.missingTitle")}</h1>
+          <ButtonLink to="/events" variant="secondary" className="mt-6 min-h-11">{t("checkout.backToEvents")}</ButtonLink>
         </>
       )}
-    </section>
+    </ResultCard>
   );
 }
 
 export function CheckoutCancelPage() {
   const ticketId = Number(useSearchParams()[0].get("ticket_id"));
+  const { t, lang } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -114,23 +120,31 @@ export function CheckoutCancelPage() {
     try {
       redirectTo(await startCheckout(ticketId));
     } catch (err) {
-      setError(apiErrorMessage(err));
+      setError(apiErrorMessage(err, {}, lang));
       setBusy(false);
     }
   }
 
   return (
-    <section className="mx-auto max-w-md text-center">
-      <h1 className="text-2xl font-bold">Payment cancelled</h1>
-      <p className="mt-2 text-slate-600">No charge was made. Your seat stays reserved for now.</p>
-      <div className="mt-6 flex justify-center gap-4">
-        <button type="button" onClick={() => void retry()} disabled={busy || !ticketId}
-          className="rounded-md bg-slate-900 px-4 py-2 text-white disabled:opacity-50">
-          {busy ? "Redirecting…" : "Try again"}
-        </button>
-        <Link to="/events" className="rounded-md border px-4 py-2">Back to events</Link>
+    <ResultCard>
+      <ResultIcon tone="neutral" path="M19 19l14 14M33 19 19 33" circle />
+      <h1 className="mt-5 text-2xl font-bold">{t("checkout.cancelledTitle")}</h1>
+      <p className="mt-2 text-muted">{t("checkout.cancelledBody")}</p>
+      <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+        <Button onClick={() => void retry()} loading={busy} disabled={!ticketId} className="min-h-11">
+          {busy ? t("common.redirecting") : t("checkout.tryAgain")}
+        </Button>
+        <ButtonLink to="/events" variant="secondary" className="min-h-11">{t("checkout.backToEvents")}</ButtonLink>
       </div>
-      <div className="mt-4"><ErrorBox message={error} /></div>
+      <div className="mt-4 text-start"><ErrorBox message={error} /></div>
+    </ResultCard>
+  );
+}
+
+function ResultCard({ children }: { children: ReactNode }) {
+  return (
+    <section className="flex justify-center py-6 sm:py-10">
+      <Card className="relative flex w-full max-w-md flex-col items-center px-6 py-10 text-center">{children}</Card>
     </section>
   );
 }

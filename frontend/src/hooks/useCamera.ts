@@ -1,34 +1,42 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from "react";
 
+import { translate } from "../i18n/translate";
+
 export type CameraStatus = "idle" | "requesting" | "ready" | "error";
 
 export interface CameraController {
   videoRef: RefObject<HTMLVideoElement | null>;
   status: CameraStatus;
+  /** English message (kept for compatibility); show `errorKey` translated in the UI. */
   error: string | null;
+  errorKey?: CameraErrorKey | null;
   start: () => Promise<void>;
   stop: () => void;
   /** The current frame as an in-memory JPEG (never stored anywhere). */
   capture: (options?: { quality?: number }) => Promise<Blob>;
 }
 
-const INSECURE_CONTEXT = "The camera needs a secure page (https or localhost).";
+export type CameraErrorKey = "camera.blocked" | "camera.notFound" | "camera.inUse" | "camera.failed" | "camera.insecure";
 
-export function cameraErrorMessage(error: unknown): string {
+export function cameraErrorKey(error: unknown): CameraErrorKey {
   const name = error instanceof DOMException || error instanceof Error ? error.name : "";
   switch (name) {
     case "NotAllowedError":
     case "SecurityError":
-      return "Camera access was blocked. Allow it in your browser's site settings, then retry.";
+      return "camera.blocked";
     case "NotFoundError":
     case "OverconstrainedError":
-      return "No camera found. Connect a camera and retry.";
+      return "camera.notFound";
     case "NotReadableError":
     case "AbortError":
-      return "The camera is in use by another app. Close it and retry.";
+      return "camera.inUse";
     default:
-      return "Couldn't start the camera. Please retry.";
+      return "camera.failed";
   }
+}
+
+export function cameraErrorMessage(error: unknown): string {
+  return translate("en", cameraErrorKey(error));
 }
 
 export function useCamera({ facingMode = "user" }: { facingMode?: "user" | "environment" } = {}): CameraController {
@@ -36,7 +44,8 @@ export function useCamera({ facingMode = "user" }: { facingMode?: "user" | "envi
   const streamRef = useRef<MediaStream | null>(null);
   const requestRef = useRef(0); // bumping it cancels a start() still waiting for permission
   const [status, setStatus] = useState<CameraStatus>("idle");
-  const [error, setError] = useState<string | null>(null);
+  const [errorKey, setErrorKey] = useState<CameraErrorKey | null>(null);
+  const error = errorKey ? translate("en", errorKey) : null;
 
   const releaseStream = useCallback(() => {
     streamRef.current?.getTracks().forEach((track) => track.stop()); // camera light goes off
@@ -53,10 +62,10 @@ export function useCamera({ facingMode = "user" }: { facingMode?: "user" | "envi
   const start = useCallback(async () => {
     const request = ++requestRef.current;
     releaseStream();
-    setError(null);
+    setErrorKey(null);
     if (!navigator.mediaDevices?.getUserMedia) {
       setStatus("error");
-      setError(INSECURE_CONTEXT);
+      setErrorKey("camera.insecure");
       return;
     }
     setStatus("requesting");
@@ -79,7 +88,7 @@ export function useCamera({ facingMode = "user" }: { facingMode?: "user" | "envi
     } catch (err) {
       if (request !== requestRef.current) return;
       setStatus("error");
-      setError(cameraErrorMessage(err));
+      setErrorKey(cameraErrorKey(err));
     }
   }, [facingMode, releaseStream]);
 
@@ -107,5 +116,5 @@ export function useCamera({ facingMode = "user" }: { facingMode?: "user" | "envi
     });
   }, []);
 
-  return { videoRef, status, error, start, stop, capture };
+  return { videoRef, status, error, errorKey, start, stop, capture };
 }

@@ -5,6 +5,7 @@ import secrets
 from collections.abc import Mapping
 
 from app.providers.payment.base import (
+    CheckoutAlreadyPaidError,
     CheckoutSession,
     InvalidWebhookError,
     PaymentProvider,
@@ -82,6 +83,14 @@ class FakePaymentProvider(PaymentProvider):
         self._sessions[session_id] = SessionStatus.PAID
 
     def mark_expired(self, session_id: str) -> None:
+        self._sessions[session_id] = SessionStatus.EXPIRED
+
+    def expire_checkout(self, session_id: str) -> None:
+        status = self._sessions.get(session_id)
+        if status is None:
+            raise PaymentProviderError(f"unknown session {session_id}")
+        if status == SessionStatus.PAID:
+            raise CheckoutAlreadyPaidError(session_id)
         self._sessions[session_id] = SessionStatus.EXPIRED
 
     def get_session_status(self, session_id: str) -> SessionStatus:

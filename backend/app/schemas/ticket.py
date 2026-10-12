@@ -2,6 +2,7 @@ from datetime import datetime
 
 from pydantic import BaseModel, ConfigDict
 
+from app.models.event import EventStatus
 from app.models.ticket import TicketStatus
 
 
@@ -29,6 +30,8 @@ class EventSummary(BaseModel):
     location: str
     starts_at: datetime
     ends_at: datetime
+    status: EventStatus  # a VALID ticket of a CLOSED event must not look usable
+    cover_image_url: str | None
 
 
 class MyTicketRead(TicketRead):

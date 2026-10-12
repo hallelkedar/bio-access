@@ -144,6 +144,26 @@ def test_qr_token_only_for_valid_tickets(
     assert (mine.qr_token == ticket.qr_token) if shows_qr else (mine.qr_token is None)
 
 
+def test_my_tickets_show_the_event_status_and_cover(
+    db: Session, make_user: MakeUser, make_event: MakeEvent
+) -> None:
+    user = make_user()
+    event = make_event(EventStatus.ACTIVE)
+    event.cover_image_url = "/media/event-covers/1/abc.jpg"
+    ticket_service.create_ticket(db, user, event.id)
+    db.commit()
+
+    [mine] = ticket_service.list_my_tickets(db, user)
+    assert mine.event.status == EventStatus.ACTIVE
+    assert mine.event.cover_image_url == "/media/event-covers/1/abc.jpg"
+
+    event.status = EventStatus.CLOSED  # the organizer closes it after the purchase
+    db.commit()
+
+    [mine] = ticket_service.list_my_tickets(db, user)
+    assert mine.event.status == EventStatus.CLOSED
+
+
 def test_qr_for_valid_ticket(db: Session, make_user: MakeUser, make_event: MakeEvent) -> None:
     user = make_user()
     ticket = ticket_service.create_ticket(db, user, make_event(EventStatus.ACTIVE).id)

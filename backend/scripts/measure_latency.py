@@ -113,7 +113,7 @@ class Harness:
 
     def create_event(self, admin_token: str, name: str) -> int:
         starts = datetime.now(UTC) + timedelta(minutes=10)
-        body = {"name": f"{TAG} {name}", "location": "Benchmark", "starts_at": starts.isoformat(),
+        body = {"name": f"{TAG} {name}", "location": "Benchmark Hall, Tel Aviv", "starts_at": starts.isoformat(),
                 "ends_at": (starts + timedelta(hours=4)).isoformat(), "capacity": 1000, "price_cents": 0, "currency": "ILS"}
         auth = {"Authorization": f"Bearer {admin_token}"}
         created = self.http.post("/api/events", json=body, headers=auth)

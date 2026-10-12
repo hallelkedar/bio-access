@@ -91,3 +91,30 @@ def test_malformed_payload_with_valid_signature_rejected(provider: FakePaymentPr
 
     with pytest.raises(InvalidWebhookError):
         provider.parse_webhook(payload, {SIGNATURE_HEADER: provider.sign(payload)})
+
+
+def test_expire_closes_an_open_checkout(provider: FakePaymentProvider) -> None:
+    from app.providers.payment.base import SessionStatus
+
+    session = checkout(provider)
+    provider.expire_checkout(session.session_id)
+    provider.expire_checkout(session.session_id)  # twice is fine
+
+    assert provider.get_session_status(session.session_id) == SessionStatus.EXPIRED
+
+
+def test_expire_refuses_a_paid_checkout(provider: FakePaymentProvider) -> None:
+    from app.providers.payment.base import CheckoutAlreadyPaidError
+
+    session = checkout(provider)
+    provider.mark_paid(session.session_id)
+
+    with pytest.raises(CheckoutAlreadyPaidError):
+        provider.expire_checkout(session.session_id)
+
+
+def test_expire_unknown_checkout(provider: FakePaymentProvider) -> None:
+    from app.providers.payment.base import PaymentProviderError
+
+    with pytest.raises(PaymentProviderError):
+        provider.expire_checkout("nope")

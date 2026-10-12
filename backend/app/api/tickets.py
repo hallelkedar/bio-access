@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.deps import require_role
 from app.core.rate_limit import PAYMENT_REFRESH_LIMIT, limiter, user_key
 from app.db.session import get_db, get_session_factory
+from app.models.ticket import TicketStatus
 from app.models.user import User, UserRole
 from app.providers.payment import get_payment_provider
 from app.providers.notify import get_notifier
@@ -102,3 +103,34 @@ def refresh_payment(
     if activated is not None:
         background_tasks.add_task(notification_service.notify_ticket_paid, session_factory, notifier, activated)
     return PaymentRefreshRead(status=ticket_status)
+
+
+@router.post("/{ticket_id}/cancel", response_model=PaymentRefreshRead)
+@limiter.limit(PAYMENT_REFRESH_LIMIT, key_func=user_key)
+def cancel_ticket(
+    request: Request,
+    ticket_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+    user: User = Depends(require_user),
+    provider: PaymentProvider = Depends(get_payment_provider),
+    notifier: Notifier = Depends(get_notifier),
+    session_factory: Callable[[], Session] = Depends(get_session_factory),
+) -> PaymentRefreshRead:
+    """Cancel a ticket that is still awaiting payment; its open checkout pages stop working."""
+    try:
+        payment_service.cancel_pending_ticket(db, provider, user, ticket_id)
+    except payment_service.TicketNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="ticket not found")
+    except payment_service.TicketNotCancellableError:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="only a ticket awaiting payment can be cancelled")
+    except payment_service.TicketAlreadyPaidError as paid:
+        if paid.activated is not None:
+            background_tasks.add_task(notification_service.notify_ticket_paid, session_factory, notifier, paid.activated)
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="ticket already paid")
+    except payment_service.PaymentInProgressError:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="a payment is being processed, try again")
+    except PaymentProviderError:
+        raise HTTPException(status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="payment provider unavailable")
+    return PaymentRefreshRead(status=TicketStatus.CANCELLED)
+

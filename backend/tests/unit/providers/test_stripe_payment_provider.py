@@ -141,3 +141,68 @@ def test_session_status_stripe_error() -> None:
 
     with pytest.raises(PaymentProviderError, match="APIConnectionError"):
         provider.get_session_status("cs_1")
+
+
+def _session(payment_status: str, status: str) -> SimpleNamespace:
+    return SimpleNamespace(payment_status=payment_status, status=status)
+
+
+def test_expire_open_checkout() -> None:
+    provider = _provider()
+    provider._client = MagicMock()
+    provider._client.v1.checkout.sessions.retrieve.return_value = _session("unpaid", "open")
+
+    provider.expire_checkout("cs_1")
+
+    provider._client.v1.checkout.sessions.expire.assert_called_once_with("cs_1")
+
+
+def test_expire_already_expired_checkout_is_fine() -> None:
+    provider = _provider()
+    provider._client = MagicMock()
+    provider._client.v1.checkout.sessions.retrieve.return_value = _session("unpaid", "expired")
+
+    provider.expire_checkout("cs_1")
+
+    provider._client.v1.checkout.sessions.expire.assert_not_called()
+
+
+def test_expire_paid_checkout_refuses() -> None:
+    from app.providers.payment.base import CheckoutAlreadyPaidError
+
+    provider = _provider()
+    provider._client = MagicMock()
+    provider._client.v1.checkout.sessions.retrieve.return_value = _session("paid", "complete")
+
+    with pytest.raises(CheckoutAlreadyPaidError):
+        provider.expire_checkout("cs_1")
+    provider._client.v1.checkout.sessions.expire.assert_not_called()
+
+
+def test_expire_paid_in_between_refuses() -> None:
+    """Open when we looked, paid by the time Stripe got the expire call."""
+    import stripe
+
+    from app.providers.payment.base import CheckoutAlreadyPaidError
+
+    provider = _provider()
+    provider._client = MagicMock()
+    provider._client.v1.checkout.sessions.retrieve.side_effect = [_session("unpaid", "open"), _session("paid", "complete")]
+    provider._client.v1.checkout.sessions.expire.side_effect = stripe.InvalidRequestError("session is complete", None)
+
+    with pytest.raises(CheckoutAlreadyPaidError):
+        provider.expire_checkout("cs_1")
+
+
+def test_expire_stripe_error() -> None:
+    import stripe
+
+    from app.providers.payment.base import PaymentProviderError
+
+    provider = _provider()
+    provider._client = MagicMock()
+    provider._client.v1.checkout.sessions.retrieve.return_value = _session("unpaid", "open")
+    provider._client.v1.checkout.sessions.expire.side_effect = stripe.APIConnectionError("no network")
+
+    with pytest.raises(PaymentProviderError, match="APIConnectionError"):
+        provider.expire_checkout("cs_1")

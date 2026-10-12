@@ -66,6 +66,40 @@ describe("login", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("Too many attempts");
   });
+
+  it("focuses the email field and checks it on blur", async () => {
+    const { user } = renderApp("/login");
+    const email = screen.getByLabelText("Email");
+    expect(email).toHaveFocus();
+
+    await user.type(email, "dana");
+    await user.tab();
+
+    expect(email).toHaveAttribute("aria-invalid", "true");
+    expect(email).toHaveAccessibleDescription("Enter a valid email, e.g. name@example.com.");
+  });
+
+  it("blocks an incomplete form without calling the server", async () => {
+    const { user } = renderApp("/login");
+
+    await user.click(screen.getByRole("button", { name: "Log in" }));
+
+    expect(screen.getAllByText("This field is required.")).toHaveLength(2);
+    expect(screen.getByLabelText("Email")).toHaveFocus();
+    expect(mocked.login).not.toHaveBeenCalled();
+  });
+
+  it("shows and hides the password", async () => {
+    const { user } = renderApp("/login");
+    const password = screen.getByLabelText("Password");
+    expect(password).toHaveAttribute("type", "password");
+
+    await user.click(screen.getByRole("button", { name: "Show password" }));
+    expect(password).toHaveAttribute("type", "text");
+
+    await user.click(screen.getByRole("button", { name: "Hide password" }));
+    expect(password).toHaveAttribute("type", "password");
+  });
 });
 
 describe("register", () => {
@@ -109,6 +143,27 @@ describe("register", () => {
     await fillRegister(user);
 
     expect(await screen.findByRole("alert")).toHaveTextContent("phone: phone must be an international number");
+  });
+
+  it("rates the password as it is typed", async () => {
+    const { user } = renderApp("/register");
+
+    await user.type(screen.getByLabelText("Password"), "Password123!");
+
+    expect(screen.getByTestId("password-strength")).toHaveTextContent("Strong");
+  });
+
+  it("blocks a short password and focuses it", async () => {
+    const { user } = renderApp("/register");
+    await user.type(screen.getByLabelText("Full name"), "Dana Levi");
+    await user.type(screen.getByLabelText("Email"), "dana@example.com");
+    await user.type(screen.getByLabelText("Password"), "short");
+
+    await user.click(screen.getByRole("button", { name: "Register" }));
+
+    expect(screen.getByText("Use at least 8 characters.")).toBeInTheDocument();
+    expect(screen.getByLabelText("Password")).toHaveFocus();
+    expect(mocked.register).not.toHaveBeenCalled();
   });
 });
 
@@ -175,12 +230,31 @@ describe("ProtectedRoute", () => {
     await waitFor(() => expect(router.state.location.pathname).toBe("/admin"));
   });
 
-  it("shows Not allowed for the wrong role", async () => {
+  it.each([
+    ["USER", "/admin", "/events"],
+    ["USER", "/gate", "/events"],
+    ["GATEKEEPER", "/tickets", "/gate"],
+    ["GATEKEEPER", "/admin/logs", "/gate"],
+    ["ADMIN", "/events", "/admin"],
+    ["ADMIN", "/gate", "/admin"],
+  ] as const)("a %s opening %s is sent to their own home %s", async (role, path, home) => {
     setToken("stored");
-    mocked.fetchMe.mockResolvedValue(makeUser("USER"));
+    mocked.fetchMe.mockResolvedValue(makeUser(role));
 
-    renderApp("/admin");
+    const { router } = renderApp(path);
 
-    expect(await screen.findByRole("heading", { name: "Not allowed" })).toBeInTheDocument();
+    await waitFor(() => expect(router.state.location.pathname).toBe(home));
+  });
+});
+
+describe("header user chip", () => {
+  it("shows the translated role next to the name", async () => {
+    setToken("stored");
+    mocked.fetchMe.mockResolvedValue(makeUser("GATEKEEPER"));
+
+    renderApp("/gate");
+
+    expect(await screen.findByText("Gatekeeper")).toBeInTheDocument();
+    expect(screen.getByText("Dana Levi")).toBeInTheDocument();
   });
 });

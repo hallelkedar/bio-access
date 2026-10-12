@@ -1,1 +1,247 @@
 @import "tailwindcss";
+
+/* `dark:` styles apply inside a .theme-dark section (the gate and the dashboard), not by OS setting. */
+@custom-variant dark (&:where(.theme-dark, .theme-dark *));
+
+/* --- Fonts (self-hosted: the CSP allows only 'self') ------------------------------------ */
+@font-face {
+  font-family: "Inter";
+  src: url("./assets/fonts/Inter-Variable-latin.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308,
+    U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+
+@font-face {
+  font-family: "Heebo";
+  src: url("./assets/fonts/Heebo-Variable-hebrew.woff2") format("woff2");
+  font-weight: 100 900;
+  font-style: normal;
+  font-display: swap;
+  unicode-range: U+0307-0308, U+0590-05FF, U+200C-2010, U+20AA, U+25CC, U+FB1D-FB4F; /* loaded only for Hebrew */
+}
+
+/* --- Design tokens ---------------------------------------------------------------------- */
+@theme {
+  --font-sans: "Inter", "Heebo", system-ui, sans-serif;
+
+  /* Brand: indigo -> cyan accent */
+  --color-brand-50: #eef2ff;
+  --color-brand-100: #e0e7ff;
+  --color-brand-200: #c7d2fe;
+  --color-brand-300: #a5b4fc;
+  --color-brand-400: #818cf8;
+  --color-brand-500: #6366f1;
+  --color-brand-600: #4f46e5;
+  --color-brand-700: #4338ca;
+  --color-brand-800: #3730a3;
+  --color-brand-900: #312e81;
+  --color-accent-300: #67e8f9;
+  --color-accent-400: #22d3ee;
+  --color-accent-500: #06b6d4;
+  --color-accent-600: #0891b2;
+
+  /* Semantic: never reused for decoration */
+  --color-ok-50: #ecfdf5;
+  --color-ok-100: #d1fae5;
+  --color-ok-500: #10b981;
+  --color-ok-600: #059669;
+  --color-ok-700: #047857;
+  --color-deny-50: #fff1f2;
+  --color-deny-100: #ffe4e6;
+  --color-deny-500: #f43f5e;
+  --color-deny-600: #e11d48;
+  --color-deny-700: #be123c;
+  --color-warn-50: #fffbeb;
+  --color-warn-100: #fef3c7;
+  --color-warn-500: #f59e0b;
+  --color-warn-600: #d97706;
+  --color-warn-700: #b45309;
+
+  --radius-card: 1rem;
+  --radius-control: 0.625rem;
+
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.06), 0 4px 16px rgb(15 23 42 / 0.06);
+  --shadow-raised: 0 8px 30px rgb(15 23 42 / 0.12);
+  --shadow-glow: 0 0 0 1px rgb(99 102 241 / 0.35), 0 0 24px rgb(34 211 238 / 0.35);
+
+  /* Animations (CSS only); all stopped by the reduced-motion rule below */
+  --animate-fade-up: fade-up 600ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-pulse-ring: pulse-ring 2.2s cubic-bezier(0.2, 0.6, 0.4, 1) infinite;
+  --animate-scan-line: scan-line 2.4s ease-in-out infinite;
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  --animate-draw: draw 500ms cubic-bezier(0.65, 0, 0.35, 1) 120ms both;
+  --animate-shake: shake 450ms cubic-bezier(0.36, 0.07, 0.19, 0.97) both;
+  --animate-burst: burst 900ms ease-out both;
+  --animate-pop-in: pop-in 180ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-fade-in: fade-in 180ms ease-out both;
+  --animate-confetti: confetti-fall 1.6s cubic-bezier(0.25, 0.6, 0.45, 1) both;
+  --animate-route-in: route-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-drawer-in: drawer-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+  --animate-ticket-flash: ticket-flash 1.8s ease-out 250ms both;
+  --animate-live-dot: live-dot 1.6s ease-out infinite;
+  /* Newest live-feed row: slides in, then its tint (--feed-flash) fades over 1.5 s */
+  --animate-feed-in: feed-in 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both, feed-flash 1.5s ease-out both;
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes pulse-ring {
+    0% { opacity: 0.55; transform: scale(0.92); }
+    80%, 100% { opacity: 0; transform: scale(1.25); }
+  }
+  @keyframes scan-line {
+    0%, 100% { top: 6%; }
+    50% { top: 94%; }
+  }
+  @keyframes shimmer {
+    from { background-position: -200% 0; }
+    to { background-position: 200% 0; }
+  }
+  /* Needs stroke-dasharray: 1 and pathLength="1" on the path */
+  @keyframes draw {
+    from { stroke-dashoffset: 1; }
+    to { stroke-dashoffset: 0; }
+  }
+  @keyframes shake {
+    10%, 90% { transform: translateX(-2px); }
+    20%, 80% { transform: translateX(4px); }
+    30%, 50%, 70% { transform: translateX(-10px); }
+    40%, 60% { transform: translateX(10px); }
+  }
+  @keyframes burst {
+    from { opacity: 0.9; transform: scale(0.15); }
+    to { opacity: 0; transform: scale(1); }
+  }
+  @keyframes pop-in {
+    from { opacity: 0; transform: translateY(6px) scale(0.98); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  /* Ends at transform: none, so the page wrapper is not a containing block afterwards */
+  /* A ring that fades out: "this is the card you asked for" */
+  @keyframes ticket-flash {
+    0%, 35% { box-shadow: 0 0 0 3px rgb(99 102 241 / 0.6), 0 8px 30px rgb(99 102 241 / 0.18); }
+    100% { box-shadow: 0 0 0 3px rgb(99 102 241 / 0), 0 1px 2px rgb(15 23 42 / 0.05); }
+  }
+  /* --drawer-from is set per direction on the panel (in from the end side, also in RTL) */
+  @keyframes drawer-in {
+    from { opacity: 0; transform: translateX(var(--drawer-from, 2rem)); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes live-dot {
+    0% { box-shadow: 0 0 0 0 rgb(52 211 153 / 0.7); }
+    100% { box-shadow: 0 0 0 8px rgb(52 211 153 / 0); }
+  }
+  @keyframes feed-in {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes feed-flash {
+    from { background-color: var(--feed-flash, transparent); }
+    to { background-color: transparent; }
+  }
+  /* Per-piece drift/spin come from --confetti-drift / --confetti-spin (Confetti.tsx) */
+  @keyframes confetti-fall {
+    0% { opacity: 0; transform: translate3d(0, 0, 0) rotate(0); }
+    10% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { opacity: 0; transform: translate3d(var(--confetti-drift, 0), 22rem, 0) rotate(var(--confetti-spin, 360deg)); }
+  }
+  @keyframes route-in {
+    from { opacity: 0; transform: translateY(6px); }
+    to { opacity: 1; transform: none; }
+  }
+}
+
+/* Surfaces follow the active theme (light on :root, dark under .theme-dark). `inline` makes the
+   utilities read var(--surface) where they are used; otherwise :root resolves it once to the light value. */
+@theme inline {
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+}
+
+/* --- Themes ------------------------------------------------------------------------------ */
+:root {
+  --surface: #ffffff;
+  --surface-2: #f8fafc;
+  --text: #0f172a;
+  --muted: #475569;
+  --border: #e2e8f0;
+
+  /* Chart colours (CHART_COLORS points here): one blue ramp, re-stepped for each theme */
+  --chart-bar: #2a78d6;
+  --chart-bar-active: #1c5cab;
+  --chart-bar-muted: #86b6ef;
+  --chart-track: #cde2fb;
+  --chart-grid: #e2e8f0;
+}
+
+/* Control-room look for the gate terminal and the live dashboard. */
+.theme-dark {
+  --surface: #0b1120;
+  --surface-2: #111a2e;
+  --text: #e2e8f0;
+  --muted: #94a3b8;
+  --border: #1e293b;
+  /* Validated on --surface-2: bar 6.9:1, muted 3.2:1 (ordinal pair, dataviz validator) */
+  --chart-bar: #6da7ec;
+  --chart-bar-active: #9ec5f4;
+  --chart-bar-muted: #256abf;
+  --chart-track: #1b2740;
+  --chart-grid: #1e293b;
+  color-scheme: dark;
+  background-color: var(--surface);
+  color: var(--text);
+}
+
+/* --- Pointer cursor: Tailwind v4's preflight no longer sets it on buttons ------------------- */
+@layer base {
+  button:not(:disabled),
+  [role="button"]:not([aria-disabled="true"]),
+  select:not(:disabled),
+  summary,
+  label:has(> input:is([type="checkbox"], [type="radio"], [type="file"]):not(:disabled)),
+  input:is([type="checkbox"], [type="radio"], [type="file"]):not(:disabled),
+  input:not(:disabled)::file-selector-button {
+    cursor: pointer;
+  }
+  /* Full-bleed sections (mx-[calc(50%-50vw)]) count the vertical scrollbar in 100vw; clip
+     (not hidden) trims that sliver without making body a scroll container, so sticky still works. */
+  body {
+    overflow-x: clip;
+  }
+}
+
+/* --- Language switch: cross-fade into the mirrored layout (LanguageProvider.setLang) ------- */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 220ms;
+  animation-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+/* The header switch glides to its new side instead of fading out and back in. */
+::view-transition-group(lang-toggle) {
+  animation-duration: 340ms;
+  animation-timing-function: cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+/* --- Reduced motion: honour the system setting everywhere ---------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     # Face recognition
     face_provider: Literal["fake", "demo", "rekognition"] = "fake"
     demo_faces_file: Path = Path(__file__).resolve().parents[2] / ".demo_faces.json"  # demo provider state (ids only)
+    demo_face_check: bool = True  # demo provider counts faces (OpenCV); false if a dim room makes it miss faces
     aws_region: str = "eu-west-1"
     aws_access_key_id: str | None = None
     aws_secret_access_key: str | None = None

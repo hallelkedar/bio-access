@@ -31,3 +31,9 @@ export async function refreshPayment(ticketId: number): Promise<TicketStatus> {
   const { data } = await api.post<{ status: TicketStatus }>(`/api/tickets/${ticketId}/payment/refresh`);
   return data.status;
 }
+
+/** Cancel a ticket still awaiting payment; the backend closes its open checkout pages first. */
+export async function cancelTicket(ticketId: number): Promise<TicketStatus> {
+  const { data } = await api.post<{ status: TicketStatus }>(`/api/tickets/${ticketId}/cancel`);
+  return data.status;
+}

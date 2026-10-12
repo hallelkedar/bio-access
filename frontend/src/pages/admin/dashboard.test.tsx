@@ -7,7 +7,7 @@ import * as adminEvents from "../../api/adminEvents";
 import * as adminStats from "../../api/adminStats";
 import type { AccessEvent, EventStats } from "../../api/adminStats";
 import { makeEvent } from "../../test/factories.events";
-import { bucketColumns, DashboardPage } from "./DashboardPage";
+import { bucketColumns, DashboardPage, occupancyPercent, pickDefaultEvent } from "./DashboardPage";
 
 vi.mock("../../api/adminEvents");
 vi.mock("../../api/adminStats");
@@ -133,3 +133,109 @@ describe("DashboardPage", () => {
     expect(columns[0]!.description).toMatch(/–/);
   });
 });
+
+describe("dashboard data", () => {
+  const at = (iso: string) => new Date(iso);
+
+  it("opens on the event that is running now, else the next one", () => {
+    const later = makeEvent({ id: 1, status: "ACTIVE", starts_at: "2026-11-02T18:00:00Z", ends_at: "2026-11-02T22:00:00Z" });
+    const now = makeEvent({ id: 2, status: "ACTIVE", starts_at: "2026-10-12T08:00:00Z", ends_at: "2026-10-12T20:00:00Z" });
+    const soon = makeEvent({ id: 3, status: "ACTIVE", starts_at: "2026-10-20T18:00:00Z", ends_at: "2026-10-20T22:00:00Z" });
+    const draft = makeEvent({ id: 4, status: "DRAFT" });
+
+    expect(pickDefaultEvent([later, now, soon, draft], at("2026-10-12T10:00:00Z"))?.id).toBe(2);
+    expect(pickDefaultEvent([later, soon, draft], at("2026-10-12T10:00:00Z"))?.id).toBe(3);
+    expect(pickDefaultEvent([draft], at("2026-10-12T10:00:00Z"))?.id).toBe(4);
+    expect(pickDefaultEvent([])).toBeNull();
+  });
+
+  it("occupancy percent never divides by zero", () => {
+    expect(occupancyPercent(15, 100, "en")).toBe("15%");
+    expect(occupancyPercent(1, 8, "en")).toBe("12.5%");
+    expect(occupancyPercent(15, 0, "en")).toBe("—");
+  });
+
+  it("empty data: friendly states, no table toggle, no NaN", async () => {
+    vi.mocked(adminStats.getEventStats).mockResolvedValue({
+      ...STATS,
+      entries_per_30_min: [],
+      decisions: { approved: 0, denied: 0, denied_by_reason: {}, approved_by_method: {} },
+      occupancy: { entered: 0, sold: 0, capacity: 0, percent: 0 },
+    });
+    renderDashboard();
+
+    expect(await screen.findByText("No entries yet.")).toBeInTheDocument();
+    expect(screen.getByText("No denials yet.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "View as table" })).not.toBeInTheDocument();
+    expect(screen.getByText("0 inside (no capacity set)")).toBeInTheDocument();
+    expect(document.body.textContent).not.toMatch(/NaN|Infinity/);
+  });
+
+  it("formats large numbers", async () => {
+    vi.mocked(adminStats.getEventStats).mockResolvedValue({
+      ...STATS,
+      decisions: { ...STATS.decisions, approved: 12_345 },
+      occupancy: { entered: 12_345, sold: 15_000, capacity: 20_000, percent: 61.725 },
+    });
+    renderDashboard();
+
+    expect(await screen.findByText("12,345 / 20,000 inside")).toBeInTheDocument();
+    expect(screen.getAllByText("12,345")).toHaveLength(2); // Inside + Approved tiles
+    expect(screen.getByText("61.7%")).toBeInTheDocument();
+  });
+
+  it("a very long event name stays inside the event picker", async () => {
+    const long = "Spring Music Festival in the Park with a Very Long Name to Test Wrapping and Clipping, Part Two";
+    vi.mocked(adminEvents.listAllEvents).mockResolvedValue([makeEvent({ id: 7, name: long, status: "ACTIVE" })]);
+    renderDashboard();
+
+    const picker = await screen.findByRole("combobox");
+    expect(picker).toHaveTextContent(long);
+    expect(picker).toHaveClass("w-full", "min-w-0", "truncate");
+  });
+
+  it("a scan pushed while open slides in above the older ones, with its result colour", async () => {
+    const older = { ...EVENT_FEED, user_name: "Older Guest", timestamp: "2026-12-01T18:00:00Z" };
+    feed.events = [older];
+    const user = renderDashboard();
+    await screen.findByText("Approved scans");
+
+    feed.events = [{ ...EVENT_FEED, result: "APPROVED", reason: "NONE", user_name: "Pushed Guest", timestamp: "2026-12-01T18:09:00Z" }, older];
+    await user.click(screen.getByRole("button", { name: "Show all reasons" })); // any re-render
+
+    const items = within(screen.getByRole("list", { name: "Live entries" })).getAllByRole("listitem");
+    expect(items[0]).toHaveTextContent("Pushed Guest");
+    expect(items[0]).toHaveTextContent("✓ Approved");
+    expect(items[0]).toHaveClass("animate-feed-in", "border-emerald-400");
+    expect(items[1]).toHaveClass("border-rose-400");
+  });
+
+  it("the dashboard is dark and the LIVE dot pulses only while live", async () => {
+    renderDashboard();
+    await screen.findByText("Approved scans");
+
+    expect(screen.getByRole("heading", { level: 1 }).closest("section")).toHaveClass("theme-dark");
+    expect(screen.getByRole("status").querySelector("[aria-hidden]")).toHaveClass("animate-live-dot");
+  });
+
+  it("the newest scan is listed first; Pause freezes the list and counts what's new", async () => {
+    const older = { ...EVENT_FEED, user_name: "Older Guest", timestamp: "2026-12-01T18:00:00Z" };
+    const newer = { ...EVENT_FEED, user_name: "Newer Guest", timestamp: "2026-12-01T18:06:00Z" };
+    feed.events = [newer, older];
+    const user = renderDashboard();
+    await screen.findByText("Approved scans");
+
+    const items = () => within(screen.getByRole("list", { name: "Live entries" })).getAllByRole("listitem");
+    expect(items()[0]).toHaveTextContent("Newer Guest");
+
+    await user.click(screen.getByRole("button", { name: "Pause updates" }));
+    feed.events = [{ ...EVENT_FEED, user_name: "Newest Guest", timestamp: "2026-12-01T18:07:00Z" }, newer, older];
+    await user.click(screen.getByRole("button", { name: "Show all reasons" })); // any re-render
+    expect(items()[0]).toHaveTextContent("Newer Guest");
+    expect(screen.getByText("1 new")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Resume" }));
+    expect(items()[0]).toHaveTextContent("Newest Guest");
+  });
+});
+

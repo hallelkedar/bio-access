@@ -5,6 +5,8 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as eventsApi from "../../api/events";
 import * as ticketsApi from "../../api/tickets";
+import { ToastProvider } from "../../components/ui";
+import { LanguageProvider } from "../../i18n/LanguageProvider";
 import * as navigation from "../../navigation";
 import { httpError } from "../../test/factories";
 import { makeEvent, makeTicket } from "../../test/factories.events";
@@ -24,7 +26,7 @@ beforeEach(() => {
 
 function renderPage(element: React.ReactElement, path = "/") {
   const router = createMemoryRouter([{ path: "*", element }], { initialEntries: [path] });
-  render(<RouterProvider router={router} />);
+  render(<ToastProvider><RouterProvider router={router} /></ToastProvider>); // as in App.tsx
   return userEvent.setup();
 }
 
@@ -60,6 +62,59 @@ describe("EventsPage", () => {
     const summer = await card("Summer Concert");
     if (kind === "button") expect(summer.getByRole("button", { name: label })).toBeInTheDocument();
     else expect(summer.getByText(label)).toBeInTheDocument();
+  });
+
+  it.each(["VALID", "ENTERED"] as const)("a %s ticket links to that ticket on My tickets", async (status) => {
+    events.listEvents.mockResolvedValue([makeEvent()]);
+    tickets.myTickets.mockResolvedValue([makeTicket(status, { id: 42 })]);
+
+    renderPage(<EventsPage />);
+
+    const link = (await card("Summer Concert")).getByRole("link", { name: "View ticket →" });
+    expect(link).toHaveAttribute("href", "/tickets#ticket-42");
+  });
+
+  it.each(["PENDING_PAYMENT", "CANCELLED"] as const)("a %s ticket has no ticket link", async (status) => {
+    events.listEvents.mockResolvedValue([makeEvent()]);
+    tickets.myTickets.mockResolvedValue([makeTicket(status)]);
+
+    renderPage(<EventsPage />);
+
+    expect((await card("Summer Concert")).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("a pending ticket can be cancelled from its card", async () => {
+    events.listEvents.mockResolvedValue([makeEvent()]);
+    tickets.myTickets.mockResolvedValueOnce([makeTicket("PENDING_PAYMENT")]).mockResolvedValueOnce([]);
+    tickets.cancelTicket.mockResolvedValue("CANCELLED");
+    const user = renderPage(<EventsPage />);
+
+    await user.click((await card("Summer Concert")).getByRole("button", { name: "Cancel ticket" }));
+    await user.click(screen.getByRole("button", { name: "Yes, cancel it" }));
+
+    await waitFor(() => expect(tickets.cancelTicket).toHaveBeenCalledWith(42));
+    expect(await (await card("Summer Concert")).findByRole("button", { name: "Buy ticket" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Notifications")).toHaveTextContent("Ticket cancelled.");
+  });
+
+  it.each([undefined, "VALID", "CANCELLED"] as const)("no cancel button with ticket %s", async (status) => {
+    events.listEvents.mockResolvedValue([makeEvent()]);
+    tickets.myTickets.mockResolvedValue(status ? [makeTicket(status)] : []);
+    renderPage(<EventsPage />);
+
+    expect((await card("Summer Concert")).queryByRole("button", { name: "Cancel ticket" })).not.toBeInTheDocument();
+  });
+
+  it("shows the venue and the city with a pin, the city in the reader's language", async () => {
+    localStorage.setItem("bioaccess.lang", "he");
+    events.listEvents.mockResolvedValue([makeEvent({ location: "Expo Tel Aviv, Tel Aviv" })]);
+    tickets.myTickets.mockResolvedValue([]);
+    render(<LanguageProvider><ToastProvider><RouterProvider router={createMemoryRouter([{ path: "*", element: <EventsPage /> }])} /></ToastProvider></LanguageProvider>);
+
+    const summer = await card("Summer Concert");
+    expect(summer.getByText("תל אביב-יפו")).toBeInTheDocument();
+    expect(summer.getByText("Expo Tel Aviv")).toBeInTheDocument();
+    localStorage.clear();
   });
 
   it("buy creates a ticket, opens checkout and redirects", async () => {
@@ -100,7 +155,29 @@ describe("EventsPage", () => {
 
     expect(await summer.findByRole("alert")).toHaveTextContent("Event is sold out");
     expect(summer.getByRole("button", { name: "Buy ticket" })).toBeEnabled();
+    expect(screen.getByLabelText("Notifications")).toHaveTextContent("Event is sold out");
     expect(redirectTo).not.toHaveBeenCalled();
+  });
+
+  it("filter chips narrow the list, and an empty result offers 'show all'", async () => {
+    events.listEvents.mockResolvedValue([makeEvent(), makeEvent({ id: 8, name: "Open Day", price_cents: 0 })]);
+    tickets.myTickets.mockResolvedValue([]);
+    vi.useFakeTimers({ toFake: ["Date"] }); // only the clock: "this week" is relative to now
+    vi.setSystemTime(new Date("2026-10-12T12:00:00Z"));
+    const user = renderPage(<EventsPage />);
+    await card("Summer Concert");
+
+    await user.click(screen.getByRole("button", { name: "Free" }));
+    expect(screen.getByRole("button", { name: "Free" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("heading", { name: "Summer Concert" })).not.toBeInTheDocument();
+    expect((await card("Open Day")).getByText("Free")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "This week" })); // both are in December
+    expect(screen.getByText("No events match this filter.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show all events" }));
+    expect(screen.getByRole("heading", { name: "Summer Concert" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Open Day" })).toBeInTheDocument();
+    vi.useRealTimers();
   });
 
   it("empty catalog", async () => {
@@ -135,6 +212,7 @@ describe("checkout return pages", () => {
     expect(screen.getByText("Confirming your payment…")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Payment received!" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "My tickets" })).toHaveAttribute("href", "/tickets");
+    expect(screen.getByTestId("confetti")).toBeInTheDocument();
     expect(tickets.myTickets).toHaveBeenCalledTimes(3);
   });
 
@@ -144,6 +222,7 @@ describe("checkout return pages", () => {
     renderPage(<CheckoutSuccessPage pollMs={5} maxWaitMs={30} refreshAtMs={[]} />, "/checkout/success?ticket_id=42");
 
     expect(await screen.findByRole("heading", { name: "Payment is being processed" })).toBeInTheDocument();
+    expect(screen.queryByTestId("confetti")).toBeNull();
     expect(tickets.refreshPayment).not.toHaveBeenCalled();
   });
 

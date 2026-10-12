@@ -8,11 +8,15 @@ import { Camera } from "../../components/Camera";
 import { ErrorBox } from "../../components/ErrorBox";
 import { FormField } from "../../components/FormField";
 import { Spinner } from "../../components/Spinner";
+import { localeFor } from "../../format";
 import { GateResult } from "../../gate/GateResult";
 import { loadGateSetup, saveGateSetup, type GateSetup } from "../../gate/gateSetup";
 import { denialText, hintText } from "../../gate/messages";
 import { grayThumbnail } from "../../gate/motion";
+import { ScanFrame } from "../../gate/ScanFrame";
+import { STATUS_STYLE, terminalStatus } from "../../gate/terminalStatus";
 import { useCamera } from "../../hooks/useCamera";
+import { useClock } from "../../hooks/useClock";
 import { useGateScanner, type ScannerOptions } from "../../hooks/useGateScanner";
 import { useLanguage } from "../../i18n/LanguageProvider";
 
@@ -84,8 +88,10 @@ function Terminal({ event, gateId, onStop, scannerOptions }: {
 }) {
   const camera = useCamera();
   const { t, lang } = useLanguage();
+  const now = useClock();
   const [paused, setPaused] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
+  const [tally, setTally] = useState({ approved: 0, denied: 0 });
   const sampleFrame = useCallback(
     () => (camera.videoRef.current ? grayThumbnail(camera.videoRef.current) : null),
     [camera.videoRef],
@@ -93,47 +99,86 @@ function Terminal({ event, gateId, onStop, scannerOptions }: {
   const { state, showDecision } = useGateScanner({
     camera, eventId: event.id, gateId, enabled: !paused, sampleFrame, options: scannerOptions,
   });
+  const status = STATUS_STYLE[terminalStatus(state, paused)];
 
   useEffect(() => {
     if (state.providerDown) setQrOpen(true); // face service down: switch to QR
   }, [state.providerDown]);
 
+  useEffect(() => {
+    // Each decision is a new object, so this counts every result once (face and QR alike).
+    if (!state.decision) return;
+    const key = state.decision.result === "APPROVED" ? "approved" : "denied";
+    setTally((counts) => ({ ...counts, [key]: counts[key] + 1 }));
+  }, [state.decision]);
+
   return (
-    <section className="space-y-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="text-xl font-bold">{event.name}</h1>
-        <span className="rounded bg-slate-200 px-2 py-0.5 text-sm">{t("gate.gateLabel", { gate: gateId })}</span>
-        <span className="text-sm text-slate-600" aria-live="polite">
-          {paused ? t("gate.paused") : state.phase === "verifying" ? t("gate.checking") : t("gate.scanning")}
-        </span>
-        <div className="ms-auto flex gap-2">
-          <button type="button" onClick={() => setPaused((p) => !p)} className="rounded-md border px-3 py-1.5 text-sm">
-            {paused ? t("gate.resume") : t("gate.pause")}
-          </button>
-          <button type="button" onClick={() => setQrOpen((o) => !o)} className="rounded-md border px-3 py-1.5 text-sm">
-            {t("gate.qrFallback")}
-          </button>
-          <button type="button" onClick={onStop} className="rounded-md border px-3 py-1.5 text-sm">{t("gate.changeGate")}</button>
+    <section className="theme-dark mx-[calc(50%-50vw)] -my-8 min-h-[calc(100vh-4rem)] px-4 py-6">
+      <div className="mx-auto max-w-5xl space-y-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <h1 className="text-xl font-bold">{event.name}</h1>
+          <span className="rounded bg-white/10 px-2 py-0.5 text-sm">{t("gate.gateLabel", { gate: gateId })}</span>
+          <span role="status" className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium ring-1 ${status.chip}`}>
+            <span className={`h-2 w-2 rounded-full ${status.dot}`} aria-hidden="true" />
+            {t(status.key)}
+          </span>
+          <time dateTime={now.toISOString()} aria-label={t("gate.clock")} data-testid="gate-clock"
+            className="font-mono text-lg text-muted tabular-nums">
+            {new Intl.DateTimeFormat(localeFor(lang), { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).format(now)}
+          </time>
+          <div className="ms-auto flex flex-wrap gap-2">
+            <button type="button" onClick={() => setPaused((p) => !p)} className={darkButton}>
+              {paused ? t("gate.resume") : t("gate.pause")}
+            </button>
+            <button type="button" onClick={() => setQrOpen((o) => !o)} className={darkButton}>
+              {t("gate.qrFallback")}
+            </button>
+            <button type="button" onClick={onStop} className={darkButton}>{t("gate.changeGate")}</button>
+          </div>
+        </div>
+        {state.hint && (
+          <p role="status" className="rounded-md bg-amber-400/10 px-3 py-2 text-amber-200 ring-1 ring-amber-400/30">
+            {state.hintCode ? hintText(lang, state.hintCode, state.hintVars) : state.hint}
+          </p>
+        )}
+        <div className="overflow-hidden rounded-2xl shadow-raised ring-1 ring-white/10">
+          <Camera camera={camera}>
+            <ScanFrame phase={paused ? "paused" : state.phase} />
+          </Camera>
+        </div>
+        {qrOpen && <QrPanel eventId={event.id} gateId={gateId} onDecision={showDecision} />}
+        <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-t border-border pt-3 text-sm text-muted">
+          <span className="inline-flex items-center gap-2" data-testid="tally-approved">
+            <span className="h-2 w-2 rounded-full bg-emerald-400" aria-hidden="true" />
+            {t("gate.session.approved", { n: tally.approved })}
+          </span>
+          <span className="inline-flex items-center gap-2" data-testid="tally-denied">
+            <span className="h-2 w-2 rounded-full bg-rose-400" aria-hidden="true" />
+            {t("gate.session.denied", { n: tally.denied })}
+          </span>
+          <span>{t("gate.session.since")}</span>
         </div>
       </div>
-      {state.hint && (
-        <p role="status" className="rounded-md bg-amber-50 px-3 py-2 text-amber-900">
-          {state.hintCode ? hintText(lang, state.hintCode, state.hintVars) : state.hint}
-        </p>
-      )}
-      <Camera camera={camera} />
-      {qrOpen && <QrPanel eventId={event.id} gateId={gateId} onDecision={showDecision} />}
       {state.phase === "result" && state.decision && <ResultOverlay decision={state.decision} />}
     </section>
   );
 }
 
+const darkButton = "rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-white/10 active:bg-white/15";
+
 function ResultOverlay({ decision }: { decision: GateDecision }) {
   const approved = decision.result === "APPROVED";
   const { t, lang } = useLanguage();
   return (
-    <div role="alert" className={`fixed inset-0 z-50 flex flex-col items-center justify-center text-white ${approved ? "bg-emerald-600" : "bg-red-600"}`}>
-      <GateResult approved={approved} message={approved ? t("gate.welcome") : denialText(lang, decision.reason)} name={decision.user_name} />
+    <div role="alert" className={`fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden px-6 text-center text-white ${
+      approved ? "bg-emerald-600" : "bg-rose-600"}`}>
+      {approved && (
+        <div aria-hidden="true"
+          className="pointer-events-none absolute inset-0 m-auto h-[150vmax] w-[150vmax] animate-burst rounded-full bg-[radial-gradient(circle,rgb(255_255_255_/_0.55),rgb(52_211_153_/_0.35)_35%,transparent_65%)]" />
+      )}
+      <div className={`relative ${approved ? "" : "animate-shake"}`}>
+        <GateResult approved={approved} message={approved ? t("gate.welcome") : denialText(lang, decision.reason)} name={decision.user_name} />
+      </div>
     </div>
   );
 }
@@ -162,13 +207,13 @@ function QrPanel({ eventId, gateId, onDecision }: { eventId: number; gateId: str
   }
 
   return (
-    <form onSubmit={submit} className="space-y-2 rounded-lg border border-slate-200 bg-white p-4">
+    <form onSubmit={submit} className="space-y-2 rounded-lg border border-border bg-surface-2 p-4">
       <label htmlFor="qr" className="block text-sm font-medium">{t("gate.qrLabel")}</label>
       <div className="flex gap-2">
         <input id="qr" autoFocus value={token} maxLength={64} onChange={(e) => setToken(e.target.value)}
-          className="flex-1 rounded-md border border-slate-300 px-3 py-2 font-mono" />
+          className="flex-1 rounded-md border border-border bg-surface px-3 py-2 font-mono text-text" />
         <button type="submit" disabled={busy || !token.trim()}
-          className="rounded-md bg-slate-900 px-4 py-2 text-white disabled:opacity-50">
+          className="rounded-md bg-accent-400 px-4 py-2 font-medium text-slate-950 disabled:opacity-50">
           {t("gate.verify")}
         </button>
       </div>

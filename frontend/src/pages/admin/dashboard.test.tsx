@@ -194,6 +194,30 @@ describe("dashboard data", () => {
     expect(picker).toHaveClass("w-full", "min-w-0", "truncate");
   });
 
+  it("a scan pushed while open slides in above the older ones, with its result colour", async () => {
+    const older = { ...EVENT_FEED, user_name: "Older Guest", timestamp: "2026-12-01T18:00:00Z" };
+    feed.events = [older];
+    const user = renderDashboard();
+    await screen.findByText("Approved scans");
+
+    feed.events = [{ ...EVENT_FEED, result: "APPROVED", reason: "NONE", user_name: "Pushed Guest", timestamp: "2026-12-01T18:09:00Z" }, older];
+    await user.click(screen.getByRole("button", { name: "Show all reasons" })); // any re-render
+
+    const items = within(screen.getByRole("list", { name: "Live entries" })).getAllByRole("listitem");
+    expect(items[0]).toHaveTextContent("Pushed Guest");
+    expect(items[0]).toHaveTextContent("✓ Approved");
+    expect(items[0]).toHaveClass("animate-feed-in", "border-emerald-400");
+    expect(items[1]).toHaveClass("border-rose-400");
+  });
+
+  it("the dashboard is dark and the LIVE dot pulses only while live", async () => {
+    renderDashboard();
+    await screen.findByText("Approved scans");
+
+    expect(screen.getByRole("heading", { level: 1 }).closest("section")).toHaveClass("theme-dark");
+    expect(screen.getByRole("status").querySelector("[aria-hidden]")).toHaveClass("animate-live-dot");
+  });
+
   it("the newest scan is listed first; Pause freezes the list and counts what's new", async () => {
     const older = { ...EVENT_FEED, user_name: "Older Guest", timestamp: "2026-12-01T18:00:00Z" };
     const newer = { ...EVENT_FEED, user_name: "Newer Guest", timestamp: "2026-12-01T18:06:00Z" };

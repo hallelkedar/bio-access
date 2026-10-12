@@ -1,5 +1,8 @@
 @import "tailwindcss";
 
+/* `dark:` styles apply inside a .theme-dark section (the gate and the dashboard), not by OS setting. */
+@custom-variant dark (&:where(.theme-dark, .theme-dark *));
+
 /* --- Fonts (self-hosted: the CSP allows only 'self') ------------------------------------ */
 @font-face {
   font-family: "Inter";
@@ -57,13 +60,6 @@
   --color-warn-600: #d97706;
   --color-warn-700: #b45309;
 
-  /* Surfaces follow the active theme (light on :root, dark under .theme-dark) */
-  --color-surface: var(--surface);
-  --color-surface-2: var(--surface-2);
-  --color-text: var(--text);
-  --color-muted: var(--muted);
-  --color-border: var(--border);
-
   --radius-card: 1rem;
   --radius-control: 0.625rem;
 
@@ -84,6 +80,9 @@
   --animate-route-in: route-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
   --animate-drawer-in: drawer-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
   --animate-ticket-flash: ticket-flash 1.8s ease-out 250ms both;
+  --animate-live-dot: live-dot 1.6s ease-out infinite;
+  /* Newest live-feed row: slides in, then its tint (--feed-flash) fades over 1.5 s */
+  --animate-feed-in: feed-in 320ms cubic-bezier(0.2, 0.7, 0.2, 1) both, feed-flash 1.5s ease-out both;
 
   @keyframes fade-up {
     from { opacity: 0; transform: translateY(16px); }
@@ -135,10 +134,32 @@
     from { opacity: 0; transform: translateX(var(--drawer-from, 2rem)); }
     to { opacity: 1; transform: none; }
   }
+  @keyframes live-dot {
+    0% { box-shadow: 0 0 0 0 rgb(52 211 153 / 0.7); }
+    100% { box-shadow: 0 0 0 8px rgb(52 211 153 / 0); }
+  }
+  @keyframes feed-in {
+    from { opacity: 0; transform: translateY(-10px); }
+    to { opacity: 1; transform: none; }
+  }
+  @keyframes feed-flash {
+    from { background-color: var(--feed-flash, transparent); }
+    to { background-color: transparent; }
+  }
   @keyframes route-in {
     from { opacity: 0; transform: translateY(6px); }
     to { opacity: 1; transform: none; }
   }
+}
+
+/* Surfaces follow the active theme (light on :root, dark under .theme-dark). `inline` makes the
+   utilities read var(--surface) where they are used; otherwise :root resolves it once to the light value. */
+@theme inline {
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-text: var(--text);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
 }
 
 /* --- Themes ------------------------------------------------------------------------------ */
@@ -148,6 +169,13 @@
   --text: #0f172a;
   --muted: #475569;
   --border: #e2e8f0;
+
+  /* Chart colours (CHART_COLORS points here): one blue ramp, re-stepped for each theme */
+  --chart-bar: #2a78d6;
+  --chart-bar-active: #1c5cab;
+  --chart-bar-muted: #86b6ef;
+  --chart-track: #cde2fb;
+  --chart-grid: #e2e8f0;
 }
 
 /* Control-room look for the gate terminal and the live dashboard. */
@@ -157,6 +185,12 @@
   --text: #e2e8f0;
   --muted: #94a3b8;
   --border: #1e293b;
+  /* Validated on --surface-2: bar 6.9:1, muted 3.2:1 (ordinal pair, dataviz validator) */
+  --chart-bar: #6da7ec;
+  --chart-bar-active: #9ec5f4;
+  --chart-bar-muted: #256abf;
+  --chart-track: #1b2740;
+  --chart-grid: #1e293b;
   color-scheme: dark;
   background-color: var(--surface);
   color: var(--text);

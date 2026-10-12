@@ -7,7 +7,7 @@ import type { Event } from "../../api/types";
 import { BarList } from "../../components/charts/BarList";
 import { reasonLabel, reasonRows } from "../../components/charts/chartMath";
 import { ColumnChart, type Column } from "../../components/charts/ColumnChart";
-import { Meter } from "../../components/charts/Meter";
+import { OccupancyGauge } from "../../components/charts/OccupancyGauge";
 import { StatTile } from "../../components/charts/StatTile";
 import { ErrorBox } from "../../components/ErrorBox";
 import { Spinner } from "../../components/Spinner";
@@ -51,10 +51,14 @@ export function pickDefaultEvent(events: Event[], now: Date = new Date()): Event
   return running ?? next ?? active[0] ?? events[0] ?? null;
 }
 
+function percentFormat(lang: Lang): Intl.NumberFormat {
+  return new Intl.NumberFormat(localeFor(lang), { style: "percent", maximumFractionDigits: 1 });
+}
+
 /** "15%" / "12.5%"; "—" when there is no capacity to divide by. */
 export function occupancyPercent(entered: number, capacity: number, lang: Lang): string {
   if (capacity <= 0) return "—";
-  return new Intl.NumberFormat(localeFor(lang), { style: "percent", maximumFractionDigits: 1 }).format(entered / capacity);
+  return percentFormat(lang).format(entered / capacity);
 }
 
 export function DashboardPage({ refreshDelayMs = 1000 }: { refreshDelayMs?: number }) {
@@ -65,7 +69,6 @@ export function DashboardPage({ refreshDelayMs = 1000 }: { refreshDelayMs?: numb
   const [error, setError] = useState<string | null>(null);
   const [showAllReasons, setShowAllReasons] = useState(false);
   const refreshTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
-  const number = new Intl.NumberFormat(localeFor(lang));
 
   useEffect(() => {
     listAllEvents()
@@ -110,21 +113,21 @@ export function DashboardPage({ refreshDelayMs = 1000 }: { refreshDelayMs?: numb
   if (!events) return <Spinner label={t("dash.loading")} />;
   if (events.length === 0) {
     return (
-      <section>
+      <section className={PANEL}>
         <h1 className="text-2xl font-bold">{t("dash.title")}</h1>
-        <p className="mt-2 text-slate-600">{t("dash.noEvents")}</p>
+        <p className="mt-2 text-muted">{t("dash.noEvents")}</p>
       </section>
     );
   }
 
   return (
-    <section className="space-y-6">
+    <section className={`${PANEL} space-y-6`}>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-3">
-        <h1 className="text-2xl font-bold">{t("dash.title")}</h1>
+        <h1 className="text-2xl font-bold tracking-tight">{t("dash.title")}</h1>
         <label className="flex w-full min-w-0 items-center gap-2 text-sm sm:w-auto sm:max-w-md sm:flex-1">
-          <span className="shrink-0 text-slate-600">{t("dash.event")}</span>
+          <span className="shrink-0 text-muted">{t("dash.event")}</span>
           <select value={eventId ?? ""} onChange={(e) => setEventId(Number(e.target.value))}
-            className="w-full min-w-0 truncate rounded-md border border-slate-300 px-2 py-1">
+            className="w-full min-w-0 truncate rounded-md border border-border bg-surface-2 px-2 py-1 text-text focus-visible:outline-2 focus-visible:outline-brand-300">
             {events.map((e) => <option key={e.id} value={e.id}>{e.name} ({t(`eventStatus.${e.status}`)})</option>)}
           </select>
         </label>
@@ -134,44 +137,58 @@ export function DashboardPage({ refreshDelayMs = 1000 }: { refreshDelayMs?: numb
       {!stats ? (
         <div className="space-y-6">
           <SkeletonTiles count={4} />
-          <SkeletonText lines={3} className="rounded-lg border border-slate-200 bg-white p-4" />
+          <SkeletonText lines={3} className="rounded-xl border border-border bg-surface-2 p-4" />
         </div>
       ) : (
         <>
           <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-            <StatTile label={t("dash.inside")} value={number.format(stats.occupancy.entered)} />
-            <StatTile label={t("dash.approved")} value={number.format(stats.decisions.approved)} />
-            <StatTile label={t("dash.denied")} value={number.format(stats.decisions.denied)} />
-            <StatTile label={t("dash.occupancy")} value={occupancyPercent(stats.occupancy.entered, stats.occupancy.capacity, lang)} />
+            <StatTile label={t("dash.inside")} value={stats.occupancy.entered} />
+            <StatTile label={t("dash.approved")} value={stats.decisions.approved} />
+            <StatTile label={t("dash.denied")} value={stats.decisions.denied} />
+            <StatTile label={t("dash.occupancy")}
+              value={stats.occupancy.capacity > 0 ? stats.occupancy.entered / stats.occupancy.capacity : occupancyPercent(0, 0, lang)}
+              format={(ratio) => percentFormat(lang).format(ratio)} />
           </div>
-          <Meter entered={stats.occupancy.entered} sold={stats.occupancy.sold} capacity={stats.occupancy.capacity} />
-          <div className="grid items-stretch gap-6 lg:grid-cols-2">
+          <div className="grid items-stretch gap-6 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+            <OccupancyGauge entered={stats.occupancy.entered} sold={stats.occupancy.sold} capacity={stats.occupancy.capacity} />
             <ColumnChart title={t("dash.entriesTitle")} columns={bucketColumns(stats, lang)} unit={t("dash.entriesUnit")} empty={t("dash.noEntries")} />
+          </div>
+          <div className="grid items-stretch gap-6 lg:grid-cols-2">
             <BarList title={t("dash.denialsTitle")} rows={reasonRows(stats.decisions.denied_by_reason, showAllReasons, lang)
               .map((r) => ({ key: r.reason, label: r.label, value: r.value }))} empty={t("dash.noDenials")}
               footer={
-                <button type="button" onClick={() => setShowAllReasons((v) => !v)} className="text-sm text-blue-700 underline">
+                <button type="button" onClick={() => setShowAllReasons((v) => !v)} className="text-sm text-brand-700 underline dark:text-brand-300">
                   {showAllReasons ? t("dash.hideEmptyReasons") : t("dash.showAllReasons")}
                 </button>
               } />
+            <LiveFeed events={feedForEvent} />
           </div>
         </>
       )}
-      <LiveFeed events={feedForEvent} />
+      {!stats && <LiveFeed events={feedForEvent} />}
     </section>
   );
 }
 
-const PILL: Record<FeedStatus, { textKey: TranslationKey; style: string }> = {
-  connecting: { textKey: "dash.pill.connecting", style: "bg-slate-100 text-slate-700" },
-  live: { textKey: "dash.pill.live", style: "bg-emerald-100 text-emerald-800" },
-  reconnecting: { textKey: "dash.pill.reconnecting", style: "bg-amber-100 text-amber-900" },
-  unauthorized: { textKey: "dash.pill.unauthorized", style: "bg-red-100 text-red-800" },
+/** The control-room look: a dark panel that bleeds to the edges on phones. */
+const PANEL = "theme-dark -mx-4 -mt-6 rounded-none px-4 py-6 sm:mx-0 sm:mt-0 sm:rounded-2xl sm:p-6";
+
+const PILL: Record<FeedStatus, { textKey: TranslationKey; chip: string; dot: string }> = {
+  connecting: { textKey: "dash.pill.connecting", chip: "bg-slate-400/10 text-slate-300 ring-slate-400/30", dot: "bg-slate-400" },
+  live: { textKey: "dash.pill.live", chip: "bg-emerald-400/10 text-emerald-300 ring-emerald-400/30", dot: "animate-live-dot bg-emerald-400" },
+  reconnecting: { textKey: "dash.pill.reconnecting", chip: "bg-amber-400/10 text-amber-300 ring-amber-400/30", dot: "bg-amber-400" },
+  unauthorized: { textKey: "dash.pill.unauthorized", chip: "bg-rose-400/10 text-rose-300 ring-rose-400/30", dot: "bg-rose-500" },
 };
 
+/** LIVE indicator: the dot pulses only while connected (the pulse stops under reduced motion). */
 function FeedPill({ status }: { status: FeedStatus }) {
   const { t } = useLanguage();
-  return <span role="status" className={`rounded-full px-3 py-1 text-xs font-medium ${PILL[status].style}`}>{t(PILL[status].textKey)}</span>;
+  return (
+    <span role="status" className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold ring-1 ${PILL[status].chip}`}>
+      <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${PILL[status].dot}`} />
+      {t(PILL[status].textKey)}
+    </span>
+  );
 }
 
 /** Newest first, scrolls inside its own box; "Pause" freezes the list while you read it. */
@@ -181,32 +198,39 @@ function LiveFeed({ events }: { events: AccessEvent[] }) {
   const shown = frozen ?? events;
   const waiting = frozen ? events.length - frozen.length : 0;
   return (
-    <div className="rounded-lg border border-slate-200 bg-white p-4">
+    <div className="flex h-full min-w-0 flex-col rounded-xl border border-border bg-surface-2 p-4">
       <div className="flex items-center justify-between gap-3">
         <h2 className="font-semibold">{t("dash.liveTitle")}</h2>
         <div className="flex items-center gap-3 text-sm">
-          {frozen && waiting > 0 && <span className="text-slate-500">{t("dash.newWhilePaused", { count: waiting })}</span>}
+          {frozen && waiting > 0 && <span className="text-muted">{t("dash.newWhilePaused", { count: waiting })}</span>}
           <button type="button" aria-pressed={frozen !== null} onClick={() => setFrozen((f) => (f ? null : events))}
-            className="rounded-md border border-slate-300 px-2.5 py-1 font-medium text-slate-700 hover:bg-slate-50">
+            className="rounded-md border border-border px-2.5 py-1 font-medium text-text hover:bg-white/5 focus-visible:outline-2 focus-visible:outline-brand-300 aria-pressed:border-amber-400/50 aria-pressed:text-amber-300">
             {frozen ? t("dash.resume") : t("dash.pause")}
           </button>
         </div>
       </div>
       {shown.length === 0 ? (
-        <p className="mt-2 text-sm text-slate-500">{t("dash.waiting")}</p>
+        <p className="mt-2 text-sm text-muted">{t("dash.waiting")}</p>
       ) : (
-        <ul aria-label={t("dash.liveTitle")} className="mt-3 max-h-80 divide-y divide-slate-100 overflow-y-auto text-sm">
-          {shown.map((e) => (
-            <li key={`${e.timestamp}-${e.gate_id}-${e.ticket_id ?? "x"}`} className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2">
-              <span className="tabular-nums text-slate-500">{timeFormat(lang).format(new Date(e.timestamp))}</span>
-              <span className={e.result === "APPROVED" ? "text-emerald-700" : "text-red-700"}>
-                {e.result === "APPROVED" ? t("dash.approvedMark") : t("dash.deniedMark")}
-              </span>
-              <span className="font-medium text-slate-900">{e.user_name ?? t("dash.unknownPerson")}</span>
-              {e.result === "DENIED" && <span className="text-slate-600">{reasonLabel(lang, e.reason)}</span>}
-              <span className="ms-auto text-xs text-slate-500">{e.gate_id} · {t(`method.${e.method}`)}</span>
-            </li>
-          ))}
+        <ul aria-label={t("dash.liveTitle")} className="mt-3 max-h-80 space-y-1.5 overflow-y-auto overflow-x-hidden text-sm">
+          {/* Each row animates once, when it first mounts: new scans slide in at the top. */}
+          {shown.map((e) => {
+            const ok = e.result === "APPROVED";
+            return (
+              <li key={`${e.timestamp}-${e.gate_id}-${e.ticket_id ?? "x"}`}
+                className={`flex animate-feed-in flex-wrap items-center gap-x-3 gap-y-1 rounded-md border-s-4 bg-white/[0.03] px-3 py-2 ${
+                  ok ? "border-emerald-400 [--feed-flash:rgb(52_211_153/0.22)]" : "border-rose-400 [--feed-flash:rgb(251_113_133/0.22)]"
+                }`}>
+                <span className="tabular-nums text-muted">{timeFormat(lang).format(new Date(e.timestamp))}</span>
+                <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${ok ? "bg-emerald-400/15 text-emerald-300" : "bg-rose-400/15 text-rose-300"}`}>
+                  {ok ? t("dash.approvedMark") : t("dash.deniedMark")}
+                </span>
+                <span className="font-medium text-text">{e.user_name ?? t("dash.unknownPerson")}</span>
+                {!ok && <span className="text-muted">{reasonLabel(lang, e.reason)}</span>}
+                <span className="ms-auto text-xs text-muted">{e.gate_id} · {t(`method.${e.method}`)}</span>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>

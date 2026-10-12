@@ -9,7 +9,7 @@ import { LogoMark } from "./components/LogoMark";
 import { RouteTransition, ToastProvider } from "./components/ui";
 import type { TranslationKey } from "./i18n/en";
 import { LanguageProvider, useLanguage } from "./i18n/LanguageProvider";
-import { AdminLayout } from "./pages/admin/AdminLayout";
+import { ADMIN_NAV, AdminLayout } from "./pages/admin/AdminLayout";
 import { DashboardPage } from "./pages/admin/DashboardPage";
 import { EventsAdminPage } from "./pages/admin/EventsAdminPage";
 import { LogsPage } from "./pages/admin/LogsPage";
@@ -34,14 +34,14 @@ export const NAV_BY_ROLE: Record<Role | "GUEST", NavItem[]> = {
     { to: "/tickets", labelKey: "nav.myTickets" },
   ],
   GATEKEEPER: [{ to: "/gate", labelKey: "nav.gate" }],
-  ADMIN: [
-    { to: "/admin", labelKey: "admin.nav.dashboard", end: true },
-    { to: "/admin/events", labelKey: "admin.nav.events" },
-    { to: "/admin/logs", labelKey: "admin.nav.logs" },
-    { to: "/admin/users", labelKey: "admin.nav.users" },
-    { to: "/admin/settings", labelKey: "admin.nav.settings" },
-  ],
+  ADMIN: ADMIN_NAV,
 };
+
+/** Admins move between their pages with the sidebar (AdminLayout), so the header skips them. */
+const HEADER_NAV_ROLES: ReadonlySet<Role | "GUEST"> = new Set(["GUEST", "USER", "GATEKEEPER"]);
+
+/** The admin area runs edge to edge (sidebar + wide dashboard); other pages stay centred. */
+const isAdminPath = (pathname: string) => pathname === "/admin" || pathname.startsWith("/admin/");
 
 function Header() {
   const { user, logout } = useAuth();
@@ -49,7 +49,8 @@ function Header() {
   const { pathname } = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuButton = useRef<HTMLButtonElement>(null);
-  const items = NAV_BY_ROLE[user?.role ?? "GUEST"];
+  const role = user?.role ?? "GUEST";
+  const items = HEADER_NAV_ROLES.has(role) ? NAV_BY_ROLE[role] : [];
 
   useEffect(() => setMenuOpen(false), [pathname]); // close the mobile menu after navigating
 
@@ -67,43 +68,47 @@ function Header() {
 
   return (
     <header className="sticky top-0 z-40 border-b border-slate-200/70 bg-white/75 backdrop-blur-md supports-[backdrop-filter]:bg-white/60">
-      <nav aria-label={t("nav.main")} className="mx-auto flex max-w-5xl flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3">
+      <nav aria-label={t("nav.main")} className={`mx-auto flex ${isAdminPath(pathname) ? "max-w-none" : "max-w-5xl"} flex-wrap items-center gap-x-6 gap-y-2 px-4 py-3`}>
         <Link to="/" className="flex items-center gap-2 text-lg font-semibold tracking-tight text-slate-900">
           <LogoMark />
           {t("app.name")}
         </Link>
-        <button
-          ref={menuButton}
-          type="button"
-          aria-expanded={menuOpen}
-          aria-controls="main-nav-links"
-          onClick={() => setMenuOpen((open) => !open)}
-          className="order-last ms-auto rounded-md p-2 text-slate-700 hover:bg-slate-100 md:hidden"
-        >
-          <span className="sr-only">{t("nav.menu")}</span>
-          <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
-            {menuOpen ? <path d="M5 5l10 10M15 5L5 15" /> : <path d="M3 6h14M3 10h14M3 14h14" />}
-          </svg>
-        </button>
-        <div
-          id="main-nav-links"
-          className={`${menuOpen ? "flex" : "hidden"} w-full flex-col gap-1 border-t border-slate-200/70 pt-2 md:flex md:w-auto md:flex-row md:items-center md:gap-5 md:border-0 md:pt-0`}
-        >
-          {items.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              end={item.end}
-              className={({ isActive }) =>
-                `rounded-md px-2 py-1.5 text-sm transition-colors md:px-1 md:py-0 ${
-                  isActive ? "font-semibold text-slate-900" : "text-slate-600 hover:text-slate-900"
-                }`
-              }
+        {items.length > 0 && (
+          <>
+            <button
+              ref={menuButton}
+              type="button"
+              aria-expanded={menuOpen}
+              aria-controls="main-nav-links"
+              onClick={() => setMenuOpen((open) => !open)}
+              className="order-last ms-auto rounded-md p-2 text-slate-700 hover:bg-slate-100 md:hidden"
             >
-              {t(item.labelKey)}
-            </NavLink>
-          ))}
-        </div>
+              <span className="sr-only">{t("nav.menu")}</span>
+              <svg viewBox="0 0 20 20" className="h-5 w-5" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+                {menuOpen ? <path d="M5 5l10 10M15 5L5 15" /> : <path d="M3 6h14M3 10h14M3 14h14" />}
+              </svg>
+            </button>
+            <div
+              id="main-nav-links"
+              className={`${menuOpen ? "flex" : "hidden"} w-full flex-col gap-1 border-t border-slate-200/70 pt-2 md:flex md:w-auto md:flex-row md:items-center md:gap-5 md:border-0 md:pt-0`}
+            >
+              {items.map((item) => (
+                <NavLink
+                  key={item.to}
+                  to={item.to}
+                  end={item.end}
+                  className={({ isActive }) =>
+                    `rounded-md px-2 py-1.5 text-sm transition-colors md:px-1 md:py-0 ${
+                      isActive ? "font-semibold text-slate-900" : "text-slate-600 hover:text-slate-900"
+                    }`
+                  }
+                >
+                  {t(item.labelKey)}
+                </NavLink>
+              ))}
+            </div>
+          </>
+        )}
         <div className="ms-auto flex items-center gap-3 text-sm">
           <LanguageToggle className="[view-transition-name:lang-toggle]" />
           {user ? (
@@ -136,13 +141,14 @@ function Header() {
 }
 
 function RootLayout() {
+  const { pathname } = useLocation();
   return (
     <LanguageProvider>
       <ToastProvider>
         <AuthProvider>
           <div className="min-h-screen bg-slate-50 text-slate-900">
             <Header />
-            <main className="mx-auto max-w-5xl px-4 py-8">
+            <main className={isAdminPath(pathname) ? "" : "mx-auto max-w-5xl px-4 py-8"}>
               <RouteTransition>
                 <Outlet />
               </RouteTransition>

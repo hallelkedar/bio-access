@@ -14,6 +14,7 @@ vi.mock("./api/adminEvents", () => ({ listAllEvents: vi.fn().mockResolvedValue([
 vi.mock("./hooks/useAdminFeed", () => ({ useAdminFeed: () => ({ status: "live", events: [] }) }));
 
 const header = () => within(screen.getByRole("banner"));
+const adminNav = () => within(screen.getByRole("navigation", { name: "Admin" }));
 
 async function signedInAs(role: Role, path = "/") {
   setToken("jwt");
@@ -31,7 +32,6 @@ describe("header nav per role", () => {
   it.each([
     ["USER", ["Events", "My tickets"]],
     ["GATEKEEPER", ["Gate"]],
-    ["ADMIN", ["Dashboard", "Events", "Logs", "Users", "Settings"]],
   ] as const)("%s sees %j", async (role, labels) => {
     await signedInAs(role);
 
@@ -39,6 +39,14 @@ describe("header nav per role", () => {
       .getAllByRole("link")
       .map((link) => link.textContent);
     expect(links).toEqual(labels);
+  });
+
+  it("ADMIN uses the admin sidebar instead of header links", async () => {
+    await signedInAs("ADMIN", "/admin");
+
+    expect(document.getElementById("main-nav-links")).toBeNull();
+    expect(header().queryByRole("button", { name: "Menu" })).not.toBeInTheDocument();
+    expect(adminNav().getAllByRole("link").map((link) => link.textContent)).toEqual(["Dashboard", "Events", "Logs", "Users", "Settings"]);
   });
 
   it("guests see Home, Log in and Register", () => {
@@ -52,15 +60,15 @@ describe("header nav per role", () => {
   it("admin links point at the admin pages and mark the current one", async () => {
     await signedInAs("ADMIN", "/admin/logs");
 
-    expect(header().getByRole("link", { name: "Logs" })).toHaveAttribute("aria-current", "page");
-    expect(header().getByRole("link", { name: "Dashboard" })).not.toHaveAttribute("aria-current");
-    expect(header().getByRole("link", { name: "Users" })).toHaveAttribute("href", "/admin/users");
+    expect(adminNav().getByRole("link", { name: "Logs" })).toHaveAttribute("aria-current", "page");
+    expect(adminNav().getByRole("link", { name: "Dashboard" })).not.toHaveAttribute("aria-current");
+    expect(adminNav().getByRole("link", { name: "Users" })).toHaveAttribute("href", "/admin/users");
   });
 });
 
 describe("mobile menu", () => {
   it("opens, closes on Escape (focus back on the button) and after navigating", async () => {
-    const { user } = await signedInAs("ADMIN", "/admin");
+    const { user } = await signedInAs("USER", "/events");
     const button = header().getByRole("button", { name: "Menu" });
     const links = document.getElementById("main-nav-links")!;
     expect(button).toHaveAttribute("aria-expanded", "false");
@@ -76,7 +84,7 @@ describe("mobile menu", () => {
     expect(button).toHaveFocus();
 
     await user.click(button);
-    await user.click(header().getByRole("link", { name: "Logs" }));
+    await user.click(header().getByRole("link", { name: "My tickets" }));
     await waitFor(() => expect(button).toHaveAttribute("aria-expanded", "false"));
   });
 });

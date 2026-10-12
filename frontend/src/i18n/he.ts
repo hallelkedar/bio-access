@@ -300,7 +300,7 @@ export const he: Record<TranslationKey, string> = {
   "dash.showAllReasons": "הצגת כל הסיבות",
   "dash.hideEmptyReasons": "הסתרת סיבות ריקות",
   "dash.pill.connecting": "מתחברים…",
-  "dash.pill.live": "● שידור חי",
+  "dash.pill.live": "שידור חי",
   "dash.pill.reconnecting": "מתחברים מחדש…",
   "dash.pill.unauthorized": "העדכונים החיים כבויים — התחברו שוב, או בדקו את הכתובות המורשות בשרת",
   "dash.liveTitle": "כניסות בזמן אמת",

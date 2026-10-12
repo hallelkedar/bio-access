@@ -51,7 +51,7 @@ export function SkeletonTiles({ count = 4, className = "" }: { count?: number; c
   return (
     <Loading className={`grid grid-cols-2 gap-4 lg:grid-cols-4 ${className}`}>
       {Array.from({ length: count }, (_, i) => (
-        <div key={i} className="rounded-lg border border-border bg-surface p-4">
+        <div key={i} className="rounded-xl border border-border bg-surface p-4 dark:bg-surface-2">
           <Skeleton className="h-3 w-1/2" />
           <Skeleton className="mt-3 h-7 w-1/3" />
         </div>

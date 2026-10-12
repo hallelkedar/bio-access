@@ -1,12 +1,16 @@
 import type { AccessReason } from "../../api/gate";
 import { translate, type Lang } from "../../i18n/translate";
 
-/** Validated sequential blue (dataviz reference palette, light mode). */
+/**
+ * Validated sequential blue (dataviz reference palette). CSS variables, so the same chart
+ * picks the light steps by default and the dark steps inside `.theme-dark` (index.css).
+ */
 export const CHART_COLORS = {
-  bar: "#2a78d6",
-  barMuted: "#86b6ef",
-  track: "#cde2fb",
-  grid: "#e2e8f0",
+  bar: "var(--chart-bar)",
+  barActive: "var(--chart-bar-active)",
+  barMuted: "var(--chart-bar-muted)",
+  track: "var(--chart-track)",
+  grid: "var(--chart-grid)",
 } as const;
 
 /** Round an axis maximum up to 1, 2, 2.5 or 5 × 10^n so ticks are readable. */

@@ -37,23 +37,23 @@ export function ColumnChart({ title, columns, unit, empty }: { title: string; co
   const busiest = columns.reduce<Column | null>((best, c) => (!best || c.value > best.value ? c : best), null);
 
   return (
-    <figure className="flex h-full min-w-0 flex-col rounded-lg border border-slate-200 bg-white p-4">
+    <figure className="flex h-full min-w-0 flex-col rounded-xl border border-border bg-surface p-4 dark:bg-surface-2">
       <figcaption className="mb-3 flex items-center justify-between gap-3">
-        <span className="font-semibold text-slate-900">{title}</span>
+        <span className="font-semibold text-text">{title}</span>
         {total > 0 && (
-          <button type="button" onClick={() => setAsTable((v) => !v)} className="shrink-0 text-sm text-blue-700 underline">
+          <button type="button" onClick={() => setAsTable((v) => !v)} className="shrink-0 text-sm text-brand-700 underline dark:text-brand-300">
             {asTable ? t("chart.viewChart") : t("chart.viewTable")}
           </button>
         )}
       </figcaption>
       {total === 0 ? (
-        <p className="flex flex-1 items-center justify-center py-10 text-sm text-slate-500">{empty ?? t("chart.noData")}</p>
+        <p className="flex flex-1 items-center justify-center py-10 text-sm text-muted">{empty ?? t("chart.noData")}</p>
       ) : asTable ? (
         <table className="w-full text-sm">
-          <thead className="text-slate-500"><tr><th className="text-start">{t("chart.time")}</th><th className="text-end">{unit}</th></tr></thead>
+          <thead className="text-muted"><tr><th className="text-start">{t("chart.time")}</th><th className="text-end">{unit}</th></tr></thead>
           <tbody>
             {columns.map((c) => (
-              <tr key={c.key} className="border-t border-slate-100"><td>{c.description}</td><td className="text-end tabular-nums">{number.format(c.value)}</td></tr>
+              <tr key={c.key} className="border-t border-border"><td>{c.description}</td><td className="text-end tabular-nums">{number.format(c.value)}</td></tr>
             ))}
           </tbody>
         </table>
@@ -63,7 +63,7 @@ export function ColumnChart({ title, columns, unit, empty }: { title: string; co
             {t("chart.summary", { total: number.format(total), unit, busiest: busiest?.description ?? "", count: number.format(busiest?.value ?? 0) })}
           </p>
           <div dir="ltr" className="flex gap-2">
-            <div className="relative h-48 w-8 shrink-0 text-end text-xs tabular-nums text-slate-500" aria-hidden>
+            <div className="relative h-48 w-8 shrink-0 text-end text-xs tabular-nums text-muted" aria-hidden>
               {axis.ticks.map((tick) => (
                 <span key={tick} className="absolute end-0 translate-y-1/2 leading-none" style={{ bottom: `${(tick / axis.max) * 100}%` }}>
                   {number.format(tick)}
@@ -85,27 +85,27 @@ export function ColumnChart({ title, columns, unit, empty }: { title: string; co
                     onMouseEnter={() => setActive(i)}
                     onFocus={() => setActive(i)}
                     onBlur={() => setActive(null)}
-                    className="flex h-full min-w-0 flex-1 items-end focus:outline-2 focus:outline-blue-700"
+                    className="flex h-full min-w-0 flex-1 items-end focus:outline-2 focus:outline-blue-700 dark:focus:outline-brand-300"
                   >
                     <span
                       className="block w-full rounded-t-[4px]"
                       style={{
                         height: `${(c.value / axis.max) * 100}%`,
                         minHeight: c.value > 0 ? 2 : 0,
-                        backgroundColor: active === i ? "#1c5cab" : CHART_COLORS.bar,
+                        backgroundColor: active === i ? CHART_COLORS.barActive : CHART_COLORS.bar,
                       }}
                     />
                   </button>
                 ))}
               </div>
               {hovered && active !== null && (
-                <div role="tooltip" className="pointer-events-none absolute -top-2 z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs text-white"
+                <div role="tooltip" className="pointer-events-none absolute -top-2 z-10 -translate-x-1/2 -translate-y-full whitespace-nowrap rounded-md bg-slate-900 px-2 py-1 text-xs text-white dark:bg-slate-700 dark:ring-1 dark:ring-white/10"
                   style={{ left: `${Math.min(85, Math.max(15, ((active + 0.5) / columns.length) * 100))}%` }}>
                   {hovered.description} · {number.format(hovered.value)} {unit}
                 </div>
               )}
               {/* Labels sit under their column; the first and last are pinned inside the card. */}
-              <div className="relative mt-1 h-4 text-xs text-slate-500" aria-hidden>
+              <div className="relative mt-1 h-4 text-xs text-muted" aria-hidden>
                 {columns.map((c, i) => {
                   if (!shownLabels.has(i)) return null;
                   const center = ((i + 0.5) / columns.length) * 100;

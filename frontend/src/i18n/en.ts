@@ -299,7 +299,7 @@ export const en = {
   "dash.showAllReasons": "Show all reasons",
   "dash.hideEmptyReasons": "Hide empty reasons",
   "dash.pill.connecting": "Connecting…",
-  "dash.pill.live": "● Live",
+  "dash.pill.live": "Live",
   "dash.pill.reconnecting": "Reconnecting…",
   "dash.pill.unauthorized": "Live updates are off — sign in again, or check the server's allowed origins",
   "dash.liveTitle": "Live entries",

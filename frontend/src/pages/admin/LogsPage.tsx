@@ -384,7 +384,7 @@ function MethodPill({ method }: { method: AccessLogRow["method"] }) {
 
 /** A thin bar plus the number (or a dash when there was no face match). End-aligned in table cells. */
 function Similarity({ value, align = "end" }: { value: number | null; align?: "start" | "end" }) {
-  if (value === null) return <span className="text-slate-400">—</span>;
+  if (value === null) return <span className="text-slate-500">—</span>;
   return (
     <span className={`inline-flex items-center gap-2 ${align === "end" ? "w-full justify-end" : ""}`}>
       <span aria-hidden="true" className="hidden h-1.5 w-10 overflow-hidden rounded-full bg-slate-100 lg:block">

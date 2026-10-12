@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 
 import { apiErrorMessage } from "../../api/errors";
 import { listEvents } from "../../api/events";
@@ -12,7 +12,8 @@ import { localeFor } from "../../format";
 import { GateResult } from "../../gate/GateResult";
 import { loadGateSetup, saveGateSetup, type GateSetup } from "../../gate/gateSetup";
 import { denialText, hintText } from "../../gate/messages";
-import { grayThumbnail } from "../../gate/motion";
+import { grayThumbnail, hasMotion } from "../../gate/motion";
+import { feedView, PRESENCE_THRESHOLD } from "../../gate/presence";
 import { ScanFrame } from "../../gate/ScanFrame";
 import { STATUS_STYLE, terminalStatus } from "../../gate/terminalStatus";
 import { useCamera } from "../../hooks/useCamera";
@@ -92,14 +93,28 @@ function Terminal({ event, gateId, onStop, scannerOptions }: {
   const [paused, setPaused] = useState(false);
   const [qrOpen, setQrOpen] = useState(false);
   const [tally, setTally] = useState({ approved: 0, denied: 0 });
-  const sampleFrame = useCallback(
-    () => (camera.videoRef.current ? grayThumbnail(camera.videoRef.current) : null),
-    [camera.videoRef],
-  );
+  // Last movement in front of the camera: decides whether the live feed is shown at all.
+  const [lastMotionAt, setLastMotionAt] = useState(0);
+  const presence = useRef({ previous: null as Uint8Array | null, motionAt: 0 });
+  const sampleFrame = useCallback(() => {
+    const thumbnail = camera.videoRef.current ? grayThumbnail(camera.videoRef.current) : null;
+    if (thumbnail) {
+      const seen = presence.current;
+      if (hasMotion(seen.previous, thumbnail, PRESENCE_THRESHOLD)) {
+        const now = Date.now();
+        if (now - seen.motionAt > 1000) setLastMotionAt(now); // re-render at most once a second
+        seen.motionAt = now;
+      }
+      seen.previous = thumbnail;
+    }
+    return thumbnail;
+  }, [camera.videoRef]);
   const { state, showDecision } = useGateScanner({
     camera, eventId: event.id, gateId, enabled: !paused, sampleFrame, options: scannerOptions,
   });
   const status = STATUS_STYLE[terminalStatus(state, paused)];
+  // The clock re-renders every second, which is what turns the feed off after the last movement.
+  const view = feedView({ paused, phase: state.phase, lastMotionAt: Math.max(lastMotionAt, presence.current.motionAt), now: now.getTime() });
 
   useEffect(() => {
     if (state.providerDown) setQrOpen(true); // face service down: switch to QR
@@ -142,7 +157,7 @@ function Terminal({ event, gateId, onStop, scannerOptions }: {
           </p>
         )}
         <div className="overflow-hidden rounded-2xl shadow-raised ring-1 ring-white/10">
-          <Camera camera={camera}>
+          <Camera camera={camera} hidden={view !== "live"} standby={<Standby paused={view === "paused"} />}>
             <ScanFrame phase={paused ? "paused" : state.phase} />
           </Camera>
         </div>
@@ -161,6 +176,21 @@ function Terminal({ event, gateId, onStop, scannerOptions }: {
       </div>
       {state.phase === "result" && state.decision && <ResultOverlay decision={state.decision} />}
     </section>
+  );
+}
+
+/** What an empty or paused gate shows instead of the live camera. */
+function Standby({ paused }: { paused: boolean }) {
+  const { t } = useLanguage();
+  return (
+    <>
+      <svg viewBox="0 0 48 48" className="h-14 w-14 text-accent-300/70" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+        {paused
+          ? <path d="M19 16v16M29 16v16" />
+          : <path d="M6 16V10a4 4 0 0 1 4-4h6M32 6h6a4 4 0 0 1 4 4v6M42 32v6a4 4 0 0 1-4 4h-6M16 42h-6a4 4 0 0 1-4-4v-6M18 30c1.6 1.6 3.6 2.4 6 2.4s4.4-.8 6-2.4M18 19v2M30 19v2" />}
+      </svg>
+      <p className="mt-3 text-lg font-medium">{t(paused ? "gate.standby.paused" : "gate.standby.idle")}</p>
+    </>
   );
 }
 

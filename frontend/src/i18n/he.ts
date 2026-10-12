@@ -258,6 +258,8 @@ export const he: Record<TranslationKey, string> = {
   "gate.start": "התחלה",
   "gate.gateLabel": "שער {gate}",
   "gate.paused": "מושהה",
+  "gate.standby.idle": "התקרבו למצלמה",
+  "gate.standby.paused": "הסריקה מושהית",
   "gate.status.watching": "צופה",
   "gate.status.verifying": "מאמת…",
   "gate.status.approved": "אושר",

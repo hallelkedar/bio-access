@@ -257,6 +257,8 @@ export const en = {
   "gate.start": "Start",
   "gate.gateLabel": "Gate {gate}",
   "gate.paused": "Paused",
+  "gate.standby.idle": "Step up to the camera",
+  "gate.standby.paused": "Scanning paused",
   "gate.status.watching": "Watching",
   "gate.status.verifying": "Verifying…",
   "gate.status.approved": "Approved",

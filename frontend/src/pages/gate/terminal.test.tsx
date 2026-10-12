@@ -89,4 +89,35 @@ describe("gate terminal (control room)", () => {
     expect(overlay).toHaveTextContent("Already entered");
     expect(overlay.querySelector(".animate-shake")).not.toBeNull();
   });
+
+  it("hides the camera while nobody is there and while paused", async () => {
+    const user = await openTerminal();
+    const standby = await screen.findByTestId("camera-standby");
+    expect(standby).toHaveAttribute("data-shown", "true");
+    expect(standby).toHaveTextContent("Step up to the camera");
+
+    await user.click(screen.getByRole("button", { name: "Pause" }));
+    expect(standby).toHaveTextContent("Scanning paused");
+    expect(standby).toHaveAttribute("data-shown", "true");
+  });
+
+  it("shows the camera when someone moves in front of it", async () => {
+    const fake = installFakeCamera();
+    let frame = 0;
+    // Small changes: enough for "someone is there", below the scanner's own motion threshold.
+    fake.getImageData.mockImplementation((_x, _y, w, h) => ({ data: new Uint8ClampedArray(w * h * 4).fill(frame++ % 2 ? 6 : 0) }));
+    await openTerminal();
+
+    await waitFor(() => expect(screen.getByTestId("camera-standby")).toHaveAttribute("data-shown", "false"), { timeout: 3000 });
+    expect(gateApi.verifyFace).not.toHaveBeenCalled();
+  });
+
+  it("keeps the camera shown while a result is on screen", async () => {
+    const user = await openTerminal();
+    await user.click(screen.getByRole("button", { name: "QR fallback" }));
+    vi.mocked(gateApi.verifyQr).mockResolvedValueOnce(APPROVED);
+    await user.type(screen.getByLabelText("Scan or type the ticket's QR code"), "token{Enter}");
+    await screen.findByRole("alert");
+    expect(screen.getByTestId("camera-standby")).toHaveAttribute("data-shown", "false");
+  });
 });

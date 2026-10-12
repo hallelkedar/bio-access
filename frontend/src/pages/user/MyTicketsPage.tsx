@@ -12,6 +12,7 @@ import { useClock } from "../../hooks/useClock";
 import { usePrefersReducedMotion } from "../../hooks/usePrefersReducedMotion";
 import { useLanguage } from "../../i18n/LanguageProvider";
 import { redirectTo } from "../../navigation";
+import { CancelTicketButton } from "./CancelTicketButton";
 import { effectiveState, formatCountdown, isPast, isUsable, type TicketState } from "./ticketState";
 
 const STATUS_STYLE: Record<TicketStatus, string> = {
@@ -56,6 +57,15 @@ export function MyTicketsPage() {
     void load();
   }, [load]);
 
+  /** Reload after a change (e.g. a cancel) without blanking the page. */
+  const refresh = useCallback(async () => {
+    try {
+      setTickets(await myTickets());
+    } catch (err) {
+      setError(apiErrorMessage(err, {}, lang));
+    }
+  }, [lang]);
+
   const groups = useMemo(() => {
     if (!tickets) return null;
     const items: Item[] = sortTickets(tickets, now).map((ticket) => ({ ticket, state: effectiveState(ticket, now) }));
@@ -86,7 +96,7 @@ export function MyTicketsPage() {
   const renderList = (items: Item[]) => (
     <ul className="mt-3 space-y-4">
       {items.map(({ ticket, state }) => (
-        <TicketCard key={ticket.id} ticket={ticket} state={state} now={now} highlighted={ticket.id === targetId} />
+        <TicketCard key={ticket.id} ticket={ticket} state={state} now={now} highlighted={ticket.id === targetId} onChanged={() => void refresh()} />
       ))}
     </ul>
   );
@@ -162,7 +172,7 @@ function LiveBadge() {
   );
 }
 
-function TicketCard({ ticket, state, now, highlighted = false }: { ticket: MyTicket; state: TicketState; now: Date; highlighted?: boolean }) {
+function TicketCard({ ticket, state, now, highlighted = false, onChanged }: { ticket: MyTicket; state: TicketState; now: Date; highlighted?: boolean; onChanged: () => void }) {
   const { t, lang } = useLanguage();
   const locale = localeFor(lang);
   const starts = new Date(ticket.event.starts_at);
@@ -219,7 +229,12 @@ function TicketCard({ ticket, state, now, highlighted = false }: { ticket: MyTic
               )}
             </p>
           )}
-          {state === "AWAITING_PAYMENT" && <CompletePayment ticketId={ticket.id} />}
+          {state === "AWAITING_PAYMENT" && (
+            <div className="flex flex-wrap items-start gap-x-4">
+              <CompletePayment ticketId={ticket.id} />
+              <CancelTicketButton ticketId={ticket.id} eventName={ticket.event.name} onDone={onChanged} className="mt-4" />
+            </div>
+          )}
         </div>
 
         {usable && ticket.status === "VALID" && (

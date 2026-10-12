@@ -22,6 +22,9 @@ const KNOWN_DETAILS: Record<string, TranslationKey> = {
   "consent is required": "errors.consentRequired",
   "face service unavailable, try again": "errors.faceServiceDown",
   "payment provider unavailable": "errors.paymentProviderDown",
+  "only a ticket awaiting payment can be cancelled": "errors.notCancellable",
+  "a payment is being processed, try again": "errors.paymentInProgress",
+  "ticket already paid": "errors.alreadyPaid",
   "image is too large": "errors.imageTooLarge",
 };
 

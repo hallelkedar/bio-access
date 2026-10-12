@@ -5,6 +5,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as eventsApi from "../../api/events";
 import * as ticketsApi from "../../api/tickets";
+import { ToastProvider } from "../../components/ui";
 import * as navigation from "../../navigation";
 import { httpError } from "../../test/factories";
 import { makeEvent, makeTicket } from "../../test/factories.events";
@@ -24,7 +25,7 @@ beforeEach(() => {
 
 function renderPage(element: React.ReactElement, path = "/") {
   const router = createMemoryRouter([{ path: "*", element }], { initialEntries: [path] });
-  render(<RouterProvider router={router} />);
+  render(<ToastProvider><RouterProvider router={router} /></ToastProvider>); // as in App.tsx
   return userEvent.setup();
 }
 
@@ -79,6 +80,28 @@ describe("EventsPage", () => {
     renderPage(<EventsPage />);
 
     expect((await card("Summer Concert")).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("a pending ticket can be cancelled from its card", async () => {
+    events.listEvents.mockResolvedValue([makeEvent()]);
+    tickets.myTickets.mockResolvedValueOnce([makeTicket("PENDING_PAYMENT")]).mockResolvedValueOnce([]);
+    tickets.cancelTicket.mockResolvedValue("CANCELLED");
+    const user = renderPage(<EventsPage />);
+
+    await user.click((await card("Summer Concert")).getByRole("button", { name: "Cancel ticket" }));
+    await user.click(screen.getByRole("button", { name: "Yes, cancel it" }));
+
+    await waitFor(() => expect(tickets.cancelTicket).toHaveBeenCalledWith(42));
+    expect(await (await card("Summer Concert")).findByRole("button", { name: "Buy ticket" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Notifications")).toHaveTextContent("Ticket cancelled.");
+  });
+
+  it.each([undefined, "VALID", "CANCELLED"] as const)("no cancel button with ticket %s", async (status) => {
+    events.listEvents.mockResolvedValue([makeEvent()]);
+    tickets.myTickets.mockResolvedValue(status ? [makeTicket(status)] : []);
+    renderPage(<EventsPage />);
+
+    expect((await card("Summer Concert")).queryByRole("button", { name: "Cancel ticket" })).not.toBeInTheDocument();
   });
 
   it("buy creates a ticket, opens checkout and redirects", async () => {

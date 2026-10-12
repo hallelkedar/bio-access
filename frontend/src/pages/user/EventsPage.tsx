@@ -10,6 +10,7 @@ import { Spinner } from "../../components/Spinner";
 import { formatDateTime, formatPrice } from "../../format";
 import { useLanguage } from "../../i18n/LanguageProvider";
 import { redirectTo } from "../../navigation";
+import { CancelTicketButton } from "./CancelTicketButton";
 
 type Loaded = { events: Event[]; tickets: Map<number, MyTicket> };
 
@@ -32,6 +33,16 @@ export function EventsPage() {
   useEffect(() => {
     void load();
   }, [load]);
+
+  /** Reload after a change (e.g. a cancel) without blanking the page. */
+  const refresh = useCallback(async () => {
+    try {
+      const [events, tickets] = await Promise.all([listEvents(), myTickets()]);
+      setData({ events, tickets: new Map(tickets.map((t) => [t.event_id, t])) });
+    } catch (err) {
+      setError(apiErrorMessage(err, {}, lang));
+    }
+  }, [lang]);
 
   if (error) {
     return (
@@ -57,7 +68,7 @@ export function EventsPage() {
       ) : (
         <ul className="mt-6 grid gap-6 sm:grid-cols-2 lg:grid-cols-3">
           {data.events.map((event) => (
-            <EventCard key={event.id} event={event} ticket={data.tickets.get(event.id)} />
+            <EventCard key={event.id} event={event} ticket={data.tickets.get(event.id)} onChanged={() => void refresh()} />
           ))}
         </ul>
       )}
@@ -65,7 +76,7 @@ export function EventsPage() {
   );
 }
 
-function EventCard({ event, ticket }: { event: Event; ticket: MyTicket | undefined }) {
+function EventCard({ event, ticket, onChanged }: { event: Event; ticket: MyTicket | undefined; onChanged: () => void }) {
   const { lang } = useLanguage();
   return (
     <li className="flex flex-col overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -80,7 +91,7 @@ function EventCard({ event, ticket }: { event: Event; ticket: MyTicket | undefin
         <p className="mt-1 text-sm text-slate-600">{formatDateTime(event.starts_at, lang)}</p>
         <p className="mt-2 font-medium">{formatPrice(event.price_cents, event.currency, lang)}</p>
         <div className="mt-auto pt-4">
-          <TicketAction event={event} ticket={ticket} />
+          <TicketAction event={event} ticket={ticket} onChanged={onChanged} />
         </div>
       </div>
     </li>
@@ -91,7 +102,7 @@ function Badge({ children }: { children: string }) {
   return <span className="inline-block rounded-full bg-emerald-100 px-3 py-1 text-sm text-emerald-800">{children}</span>;
 }
 
-function TicketAction({ event, ticket }: { event: Event; ticket: MyTicket | undefined }) {
+function TicketAction({ event, ticket, onChanged }: { event: Event; ticket: MyTicket | undefined; onChanged: () => void }) {
   const { t, lang } = useLanguage();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -132,6 +143,11 @@ function TicketAction({ event, ticket }: { event: Event; ticket: MyTicket | unde
       >
         {busy ? t("common.redirecting") : pending ? t("events.completePayment") : t("events.buy")}
       </button>
+      {pending && ticket && (
+        <div className="text-center">
+          <CancelTicketButton ticketId={ticket.id} eventName={event.name} onDone={onChanged} />
+        </div>
+      )}
       <ErrorBox message={error} />
     </div>
   );

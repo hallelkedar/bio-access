@@ -1,14 +1,14 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as ticketsApi from "../../api/tickets";
+import { ToastProvider } from "../../components/ui";
 import * as navigation from "../../navigation";
 import { httpError } from "../../test/factories";
 import { makeTicket } from "../../test/factories.events";
 import { MyTicketsPage, sortTickets } from "./MyTicketsPage";
-import { act } from "@testing-library/react";
 
 vi.mock("../../api/tickets");
 vi.mock("../../navigation");
@@ -31,7 +31,7 @@ afterEach(() => {
 
 function renderPage(path = "/tickets") {
   const router = createMemoryRouter([{ path: "*", element: <MyTicketsPage /> }], { initialEntries: [path] });
-  const view = render(<RouterProvider router={router} />);
+  const view = render(<ToastProvider><RouterProvider router={router} /></ToastProvider>); // as in App.tsx
   return { ...view, user: userEvent.setup() };
 }
 
@@ -281,3 +281,73 @@ describe("MyTicketsPage: side panel and QR", () => {
     expect(show).toHaveFocus();
   });
 });
+
+describe("MyTicketsPage: cancel a ticket awaiting payment", () => {
+  const notifications = () => screen.getByLabelText("Notifications");
+
+  it("asks first, cancels, says so, and reloads the list", async () => {
+    tickets.myTickets
+      .mockResolvedValueOnce([makeTicket("PENDING_PAYMENT")])
+      .mockResolvedValueOnce([makeTicket("CANCELLED")]);
+    tickets.cancelTicket.mockResolvedValue("CANCELLED");
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Cancel ticket" }));
+    const dialog = screen.getByRole("dialog", { name: "Cancel this ticket?" });
+    expect(dialog).toHaveAccessibleDescription(/Summer Concert\W*: your seat will be released/);
+    await user.click(within(dialog).getByRole("button", { name: "Yes, cancel it" }));
+
+    await waitFor(() => expect(notifications()).toHaveTextContent("Ticket cancelled. Your seat was released."));
+    expect(tickets.cancelTicket).toHaveBeenCalledWith(42);
+    expect(tickets.myTickets).toHaveBeenCalledTimes(2);
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Past (1)" })).toBeInTheDocument(); // no spinner flash needed
+  });
+
+  it("'Keep it' changes nothing", async () => {
+    tickets.myTickets.mockResolvedValue([makeTicket("PENDING_PAYMENT")]);
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Cancel ticket" }));
+    await user.click(screen.getByRole("button", { name: "Keep it" }));
+
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(tickets.cancelTicket).not.toHaveBeenCalled();
+  });
+
+  it("an already paid ticket is reported and reloaded as valid", async () => {
+    tickets.myTickets
+      .mockResolvedValueOnce([makeTicket("PENDING_PAYMENT")])
+      .mockResolvedValueOnce([makeTicket("VALID")]);
+    tickets.cancelTicket.mockRejectedValue(httpError(409, "ticket already paid"));
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Cancel ticket" }));
+    await user.click(screen.getByRole("button", { name: "Yes, cancel it" }));
+
+    await waitFor(() => expect(notifications()).toHaveTextContent("This ticket was already paid, so it's valid now."));
+    expect(await screen.findByRole("img", { name: "Entry QR code for Summer Concert" })).toBeInTheDocument();
+  });
+
+  it("other failures show the server's reason and keep the ticket as it was", async () => {
+    tickets.myTickets.mockResolvedValue([makeTicket("PENDING_PAYMENT")]);
+    tickets.cancelTicket.mockRejectedValue(httpError(409, "a payment is being processed, try again"));
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Cancel ticket" }));
+    await user.click(screen.getByRole("button", { name: "Yes, cancel it" }));
+
+    await waitFor(() => expect(notifications()).toHaveTextContent("A payment is being processed, try again"));
+    expect(tickets.myTickets).toHaveBeenCalledOnce();
+    expect(screen.getByRole("button", { name: "Complete payment" })).toBeInTheDocument();
+  });
+
+  it.each(["VALID", "ENTERED"] as const)("a %s ticket has no cancel button", async (status) => {
+    tickets.myTickets.mockResolvedValue([makeTicket(status)]);
+    renderPage();
+
+    await card("Summer Concert");
+    expect(screen.queryByRole("button", { name: "Cancel ticket" })).not.toBeInTheDocument();
+  });
+});
+

@@ -8,7 +8,8 @@ while admins watch entries live.
 > Academic project. External services run in test/sandbox modes; nothing here handles real money.
 
 **Contents:** [Features](#features) · [Architecture](#architecture) · [Quick start](#quick-start) ·
-[Configuration](#configuration) · [Demo walkthrough](#demo-walkthrough) · [Testing](#testing) ·
+[Configuration](#configuration) · [Demo walkthrough](#demo-walkthrough) · [90-second demo](#90-second-demo) ·
+[UI](#ui) · [Testing](#testing) ·
 [Security & privacy](#security--privacy) · [Known limitations](#known-limitations) ·
 [Project structure](#project-structure)
 
@@ -137,6 +138,48 @@ With `FACE_PROVIDER=demo` (no AWS needed), three browser windows:
 The demo provider "recognizes" the most recently enrolled ticket of the event; it shows the flow,
 not real recognition. With `FACE_PROVIDER=rekognition` the same steps use AWS Rekognition.
 
+### 90-second demo
+
+Before presenting: `FACE_PROVIDER=demo` and `PAYMENT_PROVIDER=fake` in `.env` (no internet needed;
+restart the backend), one active event, one visitor whose ticket already has face entry, two
+browser windows with camera permission granted.
+
+| Time | Show | Say |
+|---|---|---|
+| 0:00 | Landing page in English, the scan animation runs | "Your face is your ticket." |
+| 0:15 | Click **עב** in the header | The whole app flips to Hebrew, right to left, in one click. |
+| 0:25 | Scroll down: the live gate demo loops, green approval and red denial | |
+| 0:40 | `/gate` (dark terminal) in one window, `/admin` dashboard in the other, side by side | |
+| 0:50 | Step in front of the camera | The gate opens; the dashboard feed, counters and occupancy update instantly. |
+| 1:10 | Someone not enrolled steps in | Red denial with a reason, logged on the dashboard with that reason. |
+| 1:25 | Close | "No paper ticket, no queue, in real time." |
+
+If there is time, add: creating an event (calendar date picker, city autocomplete, the instant
+"ends before it starts" error); face setup with live feedback (cover the camera: "too dark");
+closing an event in the admin tab while **My tickets** is open in another, the card turns to
+"Event closed".
+
+Covers uploaded through `npm run dev` are stored as `http://localhost:8000/media/…` and do not load
+in the Docker stack (mixed content + CSP); upload covers through the stack you present on.
+
+## UI
+
+- **Themes.** The app is light. The gate terminal, the dashboard and the admin sidebar are dark
+  "control room" surfaces: wrapping a section in `.theme-dark` switches the surface tokens (`--surface`, …) and
+  turns on Tailwind's `dark:` variant inside it (`src/index.css`). There is no OS-driven dark mode.
+- **Languages.** English and Hebrew, without an i18n library (`src/i18n/`). The header switch
+  stores the choice in `localStorage` and sets `lang`/`dir` on `<html>`; Hebrew is RTL, so use
+  logical classes (`ms-`, `pe-`, `start-`, `text-start`) and flip direction icons with
+  `rtl:rotate-180`. English stays the default (the tests expect English text).
+- **Adding a text.** Add the key to `src/i18n/en.ts` (the source of truth), then the same key to
+  `src/i18n/he.ts`; a missing Hebrew key is a type error. In a component:
+  `const { t } = useLanguage(); t("my.key", { name })` with `{name}` in the text.
+  Server errors are translated by HTTP status in `apiErrorMessage`.
+- **Fonts.** Inter (Latin) and Heebo (Hebrew), variable woff2 files in `src/assets/fonts/`,
+  self-hosted because the CSP allows only `'self'`. Both are SIL OFL 1.1; the license texts and
+  sources are next to the files (`src/assets/fonts/README.md`).
+- **Motion.** CSS only. With "reduce motion" turned on in the OS, every looping animation stops.
+
 ## Testing
 
 ```bash
@@ -192,7 +235,9 @@ Spec §12 scenarios, one test each: [`backend/tests/security/test_spec_cases.py`
 - The WebSocket feed and rate limits are **per server process**; several servers would need a shared
   broker (e.g. Redis).
 - Real SMS delivery (Twilio) was never tested against the live service; the adapter is unit-tested.
-- The UI has no dark mode; charts use a validated light palette.
+- No OS-driven dark mode: only the gate, the dashboard and the admin sidebar are dark, by design.
+- Lighthouse/axe are not part of the toolchain; accessibility was checked with a headless-Chrome
+  script (names, labels, headings, contrast, RTL overflow, reduced motion).
 
 ## Project structure
 

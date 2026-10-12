@@ -8,6 +8,7 @@ import * as navigation from "../../navigation";
 import { httpError } from "../../test/factories";
 import { makeTicket } from "../../test/factories.events";
 import { MyTicketsPage, sortTickets } from "./MyTicketsPage";
+import { act } from "@testing-library/react";
 
 vi.mock("../../api/tickets");
 vi.mock("../../navigation");
@@ -18,10 +19,14 @@ beforeEach(() => {
   vi.resetAllMocks();
   URL.revokeObjectURL = revoke;
   tickets.fetchQrImage.mockResolvedValue("blob:qr-42");
+  // The page now depends on the clock: pin "today" before the Dec 2026 test events.
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(new Date("2026-10-12T10:00:00Z"));
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
+  vi.useRealTimers();
 });
 
 function renderPage(path = "/tickets") {
@@ -157,5 +162,122 @@ describe("MyTicketsPage: link from Events", () => {
     await screen.findByRole("heading", { name: "Second Show" });
     expect(scroll).not.toHaveBeenCalled();
     expect(document.querySelector("[data-highlighted]")).toBeNull();
+  });
+});
+
+describe("MyTicketsPage: event state", () => {
+  const withEvent = (status: Parameters<typeof makeTicket>[0], change: Partial<ReturnType<typeof makeTicket>["event"]>, id = 42) => {
+    const base = makeTicket(status, { id });
+    return { ...base, event: { ...base.event, ...change } };
+  };
+
+  it("a valid ticket of a closed event: no QR, no face setup, filed under Past", async () => {
+    tickets.myTickets.mockResolvedValue([withEvent("VALID", { status: "CLOSED" })]);
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Past (1)" }));
+
+    const summer = await card("Summer Concert");
+    expect(summer.getByText("Event closed by organizer")).toBeInTheDocument();
+    expect(summer.queryByRole("img")).not.toBeInTheDocument();
+    expect(summer.queryByRole("link", { name: "Set up face entry" })).not.toBeInTheDocument();
+    expect(tickets.fetchQrImage).not.toHaveBeenCalled();
+    expect(screen.getByText("No upcoming tickets.")).toBeInTheDocument();
+    expect(screen.getByText("No upcoming events yet.")).toBeInTheDocument(); // side panel
+  });
+
+  it("an unpaid ticket of a closed event says 'Event unavailable' and cannot be paid", async () => {
+    tickets.myTickets.mockResolvedValue([withEvent("PENDING_PAYMENT", { status: "CLOSED" })]);
+    const { user } = renderPage();
+
+    await user.click(await screen.findByRole("button", { name: "Past (1)" }));
+
+    expect((await card("Summer Concert")).getByText("Event unavailable")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Complete payment" })).not.toBeInTheDocument();
+  });
+
+  it("Past is collapsed by default and opens on click", async () => {
+    tickets.myTickets.mockResolvedValue([withEvent("VALID", { starts_at: "2026-10-01T18:00:00Z", ends_at: "2026-10-01T22:00:00Z" })]);
+    const { user } = renderPage();
+
+    const toggle = await screen.findByRole("button", { name: "Past (1)" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+    expect(screen.queryByRole("heading", { name: "Summer Concert" })).not.toBeInTheDocument();
+
+    await user.click(toggle);
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect((await card("Summer Concert")).getByText("Event ended")).toBeInTheDocument();
+  });
+
+  it("a ticket linked from Events opens Past when it lives there", async () => {
+    Element.prototype.scrollIntoView = vi.fn();
+    tickets.myTickets.mockResolvedValue([withEvent("ENTERED", { starts_at: "2026-10-01T18:00:00Z", ends_at: "2026-10-01T22:00:00Z" })]);
+    renderPage("/tickets#ticket-42");
+
+    const target = (await screen.findByRole("heading", { name: "Summer Concert" })).closest("li")!;
+    expect(screen.getByRole("button", { name: "Past (1)" })).toHaveAttribute("aria-expanded", "true");
+    await waitFor(() => expect(target).toHaveFocus());
+  });
+
+  it("flips to 'Happening now' and then 'Event ended' as the clock moves, without a reload", async () => {
+    vi.useFakeTimers({ toFake: ["Date", "setInterval", "clearInterval"] });
+    vi.setSystemTime(new Date("2026-12-01T17:59:50Z")); // 10 s before the start
+    tickets.myTickets.mockResolvedValue([makeTicket("VALID")]);
+    renderPage();
+    const summer = await card("Summer Concert");
+    expect(summer.getByText("in 1m")).toBeInTheDocument();
+
+    act(() => vi.advanceTimersByTime(30_000));
+    expect(summer.getByText("Happening now")).toBeInTheDocument();
+
+    act(() => {
+      vi.setSystemTime(new Date("2026-12-01T22:00:00Z"));
+      vi.advanceTimersByTime(30_000);
+    });
+    expect(screen.getByRole("button", { name: "Past (1)" })).toBeInTheDocument();
+    expect(screen.queryByRole("img", { name: /Entry QR code/ })).not.toBeInTheDocument();
+    expect(myTicketsCalls()).toBe(1); // no reload
+  });
+});
+
+const myTicketsCalls = () => tickets.myTickets.mock.calls.length;
+
+describe("MyTicketsPage: side panel and QR", () => {
+  const panel = () => within(screen.getByRole("complementary", { name: "Your next event" }));
+
+  it("shows the next event with a countdown and what is left to do", async () => {
+    tickets.myTickets.mockResolvedValue([makeTicket("VALID")]); // starts 1 Dec 18:00Z, now is 12 Oct 10:00Z
+    renderPage();
+    await card("Summer Concert");
+
+    expect(panel().getByText("Summer Concert")).toBeInTheDocument();
+    expect(panel().getByText("in 50d 8h")).toBeInTheDocument();
+    expect(panel().getByText(/Paid/)).toBeInTheDocument();
+    expect(panel().getByRole("link", { name: "Set up →" })).toHaveAttribute("href", "/enroll/42");
+    expect(panel().getByText("How entry works")).toBeInTheDocument();
+    expect(panel().queryByRole("heading")).not.toBeInTheDocument(); // the cards own the event headings
+  });
+
+  it("says face entry is ready once enrolled", async () => {
+    tickets.myTickets.mockResolvedValue([makeTicket("VALID", { enrolled: true })]);
+    renderPage();
+    await card("Summer Concert");
+
+    expect(panel().getByText(/Face entry · Ready/)).toBeInTheDocument();
+    expect(panel().queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("opens the QR larger and closes it with Esc", async () => {
+    tickets.myTickets.mockResolvedValue([makeTicket("VALID")]);
+    const { user } = renderPage();
+    const show = await screen.findByRole("button", { name: "Show larger" });
+
+    await user.click(show);
+    const dialog = screen.getByRole("dialog", { name: "Entry QR · Summer Concert" });
+    expect(within(dialog).getByRole("img", { name: "Entry QR code for Summer Concert" })).toHaveAttribute("src", "blob:qr-42");
+
+    await user.keyboard("{Escape}");
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    expect(show).toHaveFocus();
   });
 });

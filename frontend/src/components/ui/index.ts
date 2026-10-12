@@ -5,6 +5,7 @@ export { ConfirmDialog } from "./ConfirmDialog";
 export { CountUp } from "./CountUp";
 export { DateTimeField } from "./DateTimeField";
 export { EmptyState } from "./EmptyState";
+export { Modal } from "./Modal";
 export { Reveal } from "./Reveal";
 export { RouteTransition } from "./RouteTransition";
 export { Skeleton, SkeletonTable, SkeletonText, SkeletonTiles } from "./Skeleton";

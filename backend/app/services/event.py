@@ -6,7 +6,7 @@ from app.models.event import Event, EventStatus
 from app.models.user import User
 from app.providers.face.base import FaceProvider
 from app.repositories import event_repository, ticket_repository
-from app.schemas.event import EventCreate, EventUpdate
+from app.schemas.event import LOCATION_FORMAT_ERROR, EventCreate, EventUpdate, is_venue_city
 
 
 class EventNotFoundError(Exception):
@@ -68,6 +68,9 @@ def update_event(
     ends_at = changes.get("ends_at", event.ends_at)
     if ends_at <= starts_at:
         raise InvalidEventError("ends_at must be after starts_at")
+    new_location = changes.get("location")
+    if new_location is not None and new_location != event.location and not is_venue_city(new_location):
+        raise InvalidEventError(LOCATION_FORMAT_ERROR)
 
     try:
         if changes.get("status") == EventStatus.ACTIVE and event.status != EventStatus.ACTIVE:

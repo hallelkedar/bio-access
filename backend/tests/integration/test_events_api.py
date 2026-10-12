@@ -15,7 +15,7 @@ Headers = Callable[[User], dict[str, str]]
 URL = "/api/events"
 BODY = {
     "name": "Concert",
-    "location": "Tel Aviv",
+    "location": "Expo Tel Aviv, Tel Aviv",
     "starts_at": "2027-01-01T20:00:00+02:00",
     "ends_at": "2027-01-01T23:00:00+02:00",
     "capacity": 50,
@@ -83,6 +83,25 @@ def test_admin_updates_event(
     assert response.status_code == 200
     assert response.json()["name"] == "Renamed"
     assert response.json()["status"] == "ACTIVE"
+
+
+def test_create_without_venue_and_city_returns_422(client: TestClient, make_user: MakeUser, auth_headers: Headers) -> None:
+    response = client.post(URL, json={**BODY, "location": "asdf"}, headers=auth_headers(make_user(UserRole.ADMIN)))
+
+    assert response.status_code == 422
+
+
+def test_legacy_location_rule_on_update(
+    client: TestClient, make_user: MakeUser, make_event: MakeEvent, auth_headers: Headers
+) -> None:
+    event = make_event(location="Here")  # older event without a city
+    headers = auth_headers(make_user(UserRole.ADMIN))
+
+    untouched = client.put(f"{URL}/{event.id}", json={"name": "Renamed", "location": "Here"}, headers=headers)
+    assert (untouched.status_code, untouched.json()["location"]) == (200, "Here")
+
+    changed = client.put(f"{URL}/{event.id}", json={"location": "asdf"}, headers=headers)
+    assert (changed.status_code, changed.json()["detail"]) == (422, "location must look like 'Venue, City'")
 
 
 def test_user_cannot_update(

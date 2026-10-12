@@ -21,7 +21,7 @@ STARTS = datetime(2027, 1, 1, 20, 0, tzinfo=UTC)
 def event_data(**overrides: object) -> EventCreate:
     fields: dict[str, object] = {
         "name": "Concert",
-        "location": "Tel Aviv",
+        "location": "Expo Tel Aviv, Tel Aviv",
         "starts_at": STARTS,
         "ends_at": STARTS + timedelta(hours=3),
         "capacity": 50,
@@ -182,3 +182,47 @@ def test_list_all_events_includes_every_status_latest_first(db: Session, make_ev
 
     mine = [i for i in ids if i in {draft.id, active.id, closed.id}]
     assert mine == [draft.id, active.id, closed.id]
+
+
+@pytest.mark.parametrize(
+    ("location", "ok"),
+    [
+        ("Expo Tel Aviv, Tel Aviv", True),
+        ("Hall 2, Expo, Tel Aviv", True),  # the city is after the last comma
+        ("Here", False),
+        ("asdf", False),
+        ("Venue,", False),
+        (", Haifa", False),
+        ("  ,  ", False),
+    ],
+)
+def test_is_venue_city(location: str, ok: bool) -> None:
+    from app.schemas.event import is_venue_city
+
+    assert is_venue_city(location) is ok
+
+
+def test_create_requires_venue_and_city() -> None:
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError, match="Venue, City"):
+        event_data(location="asdf")
+
+
+def test_legacy_location_survives_edits_that_leave_it_alone(db: Session, make_event: MakeEvent) -> None:
+    event = make_event(location="Here")  # created before the rule existed
+
+    renamed = event_service.update_event(db, event.id, EventUpdate(name="Renamed"), FakeFaceProvider())
+    resent = event_service.update_event(db, event.id, EventUpdate(location="Here"), FakeFaceProvider())
+
+    assert (renamed.name, resent.location) == ("Renamed", "Here")
+
+
+def test_changing_the_location_must_follow_the_rule(db: Session, make_event: MakeEvent) -> None:
+    event = make_event(location="Here")
+
+    with pytest.raises(event_service.InvalidEventError, match="Venue, City"):
+        event_service.update_event(db, event.id, EventUpdate(location="asdf"), FakeFaceProvider())
+
+    moved = event_service.update_event(db, event.id, EventUpdate(location="Haifa Port, Haifa"), FakeFaceProvider())
+    assert moved.location == "Haifa Port, Haifa"

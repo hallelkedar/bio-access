@@ -1,10 +1,22 @@
 from datetime import datetime
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.models.event import EventStatus
 
 Currency = Field(default="ILS", pattern=r"^[A-Z]{3}$")
+
+LOCATION_FORMAT_ERROR = "location must look like 'Venue, City'"
+
+
+def is_venue_city(location: str) -> bool:
+    """'Expo Tel Aviv, Tel Aviv' yes; 'asdf', 'Here,' or ', Haifa' no.
+
+    A cheap server-side guard so the API can't bypass the form's city picker. The city
+    itself isn't checked against a list: that list lives in the frontend.
+    """
+    venue, comma, city = location.rpartition(",")
+    return bool(comma) and bool(venue.strip()) and bool(city.strip())
 
 
 class EventCreate(BaseModel):
@@ -16,6 +28,13 @@ class EventCreate(BaseModel):
     price_cents: int = Field(ge=0)
     currency: str = Currency
 
+    @field_validator("location")
+    @classmethod
+    def venue_and_city(cls, location: str) -> str:
+        if not is_venue_city(location):
+            raise ValueError(LOCATION_FORMAT_ERROR)
+        return location
+
     @model_validator(mode="after")
     def ends_after_starts(self) -> "EventCreate":
         if self.ends_at <= self.starts_at:
@@ -24,7 +43,11 @@ class EventCreate(BaseModel):
 
 
 class EventUpdate(BaseModel):
-    """Partial update: only the fields that are sent are changed."""
+    """Partial update: only the fields that are sent are changed.
+
+    `location` is checked in the service, and only when it really changes, so an old
+    event like "Here" can still be edited without retyping its location.
+    """
 
     name: str | None = Field(default=None, min_length=1, max_length=255)
     location: str | None = Field(default=None, min_length=1, max_length=255)

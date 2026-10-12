@@ -70,10 +70,10 @@ export function MyTicketsPage() {
   const groups = useMemo(() => {
     if (!tickets) return null;
     const items: Item[] = sortTickets(tickets, now).map((ticket) => ({ ticket, state: effectiveState(ticket, now) }));
-    const upcoming = items.filter((i) => !isPast(i.ticket, i.state, now));
+    const upcoming = items.filter((i) => !isPast(i.state));
     return {
       upcoming,
-      past: items.filter((i) => isPast(i.ticket, i.state, now)),
+      past: items.filter((i) => isPast(i.state)),
       next: upcoming.find((i) => isUsable(i.state)) ?? null,
     };
   }, [tickets, now]);

@@ -114,8 +114,11 @@ describe("MyTicketsPage", () => {
 
   it("a used ticket shows when it entered, without a QR", async () => {
     tickets.myTickets.mockResolvedValue([makeTicket("ENTERED", { entered_at: "2026-12-01T17:42:00Z" })]);
-    renderPage();
+    const { user } = renderPage();
 
+    // Used tickets go to Past at once, even while the event is still on.
+    expect(await screen.findByText("No upcoming tickets.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Past (1)" }));
     const summer = await card("Summer Concert");
     expect(summer.getByText("Used")).toBeInTheDocument();
     expect(summer.getByText(/Entered at/)).toBeInTheDocument();
@@ -365,8 +368,9 @@ describe("MyTicketsPage: cancel a ticket awaiting payment", () => {
 
   it.each(["VALID", "ENTERED"] as const)("a %s ticket has no cancel button", async (status) => {
     tickets.myTickets.mockResolvedValue([makeTicket(status)]);
-    renderPage();
+    const { user } = renderPage();
 
+    if (status === "ENTERED") await user.click(await screen.findByRole("button", { name: "Past (1)" })); // used: in Past
     await card("Summer Concert");
     expect(screen.queryByRole("button", { name: "Cancel ticket" })).not.toBeInTheDocument();
   });

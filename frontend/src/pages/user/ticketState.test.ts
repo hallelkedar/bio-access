@@ -37,12 +37,9 @@ describe("effectiveState", () => {
     expect(["ENDED", "EVENT_CLOSED", "USED", "CANCELLED", "AWAITING_PAYMENT"].some((s) => isUsable(s as never))).toBe(false);
   });
 
-  it("a used ticket stays with the upcoming ones until its event ends", () => {
-    const used = ticket("ENTERED");
-    expect(isPast(used, "USED", at(ENDS, -1))).toBe(false);
-    expect(isPast(used, "USED", at(ENDS))).toBe(true);
-    expect(isPast(used, "EVENT_CLOSED", at(STARTS, -1))).toBe(true);
-    expect(isPast(used, "AWAITING_PAYMENT", at(STARTS, -1))).toBe(false);
+  it("a used ticket goes to Past right away, like ended, closed and cancelled ones", () => {
+    for (const state of ["USED", "ENDED", "EVENT_CLOSED", "CANCELLED"] as const) expect(isPast(state)).toBe(true);
+    for (const state of ["UPCOMING", "LIVE_NOW", "AWAITING_PAYMENT"] as const) expect(isPast(state)).toBe(false);
   });
 });
 

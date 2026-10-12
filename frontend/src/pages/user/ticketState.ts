@@ -27,10 +27,9 @@ export function isUsable(state: TicketState): boolean {
   return state === "UPCOMING" || state === "LIVE_NOW";
 }
 
-/** Goes to the collapsed "Past" section: nothing left to do with it. */
-export function isPast(ticket: MyTicket, state: TicketState, now: Date): boolean {
-  if (state === "ENDED" || state === "EVENT_CLOSED" || state === "CANCELLED") return true;
-  return state === "USED" && now.getTime() >= new Date(ticket.event.ends_at).getTime();
+/** Goes to the collapsed "Past" section: nothing left to do with it (a used ticket right away). */
+export function isPast(state: TicketState): boolean {
+  return state === "ENDED" || state === "EVENT_CLOSED" || state === "CANCELLED" || state === "USED";
 }
 
 const UNITS: Record<Lang, { d: string; h: string; m: string }> = {

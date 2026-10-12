@@ -149,4 +149,82 @@ describe("EventsAdminPage", () => {
     expect(admin.uploadCover).toHaveBeenCalledWith(2, file);
     expect(await screen.findByRole("alert")).toHaveTextContent("Use a real JPEG, PNG or WebP image.");
   });
+
+  describe("cover drop zone", () => {
+    async function openCover() {
+      const user = renderAdmin();
+      await user.click((await row("Live Show")).getByRole("button", { name: "Edit" }));
+      return user;
+    }
+    const png = (name = "cover.png", size = 3) => new File(["x".repeat(size)], name, { type: "image/png" });
+
+    it("uploads, keeps the editor open, says it is saved and refreshes the list", async () => {
+      admin.uploadCover.mockResolvedValue({ ...ACTIVE, cover_image_url: "/media/event-covers/2.png" });
+      const user = await openCover();
+      const file = png("stage.png", 2048);
+
+      await user.upload(screen.getByLabelText("Choose cover image"), file);
+      expect(screen.getByText("stage.png")).toBeInTheDocument();
+      expect(screen.getByText(/2 kB/)).toBeInTheDocument();
+      await user.click(screen.getByRole("button", { name: "Upload cover" }));
+
+      expect(admin.uploadCover).toHaveBeenCalledWith(2, file);
+      expect(await screen.findByText("Cover saved ✓")).toBeInTheDocument();
+      expect(screen.getByRole("img", { name: "Cover preview" })).toHaveAttribute("src", "/media/event-covers/2.png");
+      expect(screen.getByRole("heading", { name: /Live Show/ })).toBeInTheDocument(); // editor still open
+      expect(admin.listAllEvents).toHaveBeenCalledTimes(2);
+      expect(screen.getByRole("button", { name: "Upload cover" })).toBeDisabled();
+    });
+
+    it("accepts a file dropped on the zone", async () => {
+      await openCover();
+      const zone = screen.getByText("Click to choose an image, or drag it here").closest("label")!;
+      const file = png("dropped.png");
+
+      fireEvent.dragEnter(zone, { dataTransfer: { files: [file] } });
+      expect(zone).toHaveAttribute("data-dragging", "true");
+      fireEvent.drop(zone, { dataTransfer: { files: [file] } });
+
+      expect(zone).not.toHaveAttribute("data-dragging");
+      expect(screen.getByText("dropped.png")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Upload cover" })).toBeEnabled();
+    });
+
+    it("rejects a wrong type or a too-large file before uploading", async () => {
+      await openCover();
+      const zone = screen.getByText("Click to choose an image, or drag it here").closest("label")!;
+
+      fireEvent.drop(zone, { dataTransfer: { files: [new File(["%PDF"], "doc.pdf", { type: "application/pdf" })] } });
+      expect(screen.getByRole("alert")).toHaveTextContent("Use a real JPEG, PNG or WebP image.");
+
+      fireEvent.drop(zone, { dataTransfer: { files: [png("huge.png", 2 * 1024 * 1024 + 1)] } });
+      expect(screen.getByRole("alert")).toHaveTextContent("The image is too large (max 2 MB).");
+
+      expect(screen.getByRole("button", { name: "Upload cover" })).toBeDisabled();
+      expect(admin.uploadCover).not.toHaveBeenCalled();
+    });
+
+    it("opens the picker from the keyboard (Enter or Space on the zone)", async () => {
+      const user = await openCover();
+      const zone = screen.getByRole("button", { name: /Click to choose an image, or drag it here/ });
+      const picker = vi.spyOn(HTMLInputElement.prototype, "click");
+
+      zone.focus();
+      await user.keyboard("{Enter}");
+      await user.keyboard(" ");
+
+      expect(picker).toHaveBeenCalledTimes(2);
+      expect(screen.getByLabelText("Choose cover image")).toHaveAttribute("tabindex", "-1");
+    });
+
+    it("clear removes the chosen file", async () => {
+      const user = await openCover();
+      await user.upload(screen.getByLabelText("Choose cover image"), png());
+
+      await user.click(screen.getByRole("button", { name: "Clear" }));
+
+      expect(screen.queryByText("cover.png")).not.toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Upload cover" })).toBeDisabled();
+    });
+  });
 });

@@ -281,6 +281,11 @@ export const he: Record<TranslationKey, string> = {
   "aevents.upload": "העלאת תמונה",
   "aevents.coverTooLarge": "התמונה גדולה מדי (עד 2MB).",
   "aevents.coverBadType": "השתמשו בתמונת JPEG, PNG או WebP אמיתית.",
+  "aevents.coverDrop": "לחצו לבחירת תמונה, או גררו אותה לכאן",
+  "aevents.coverReplace": "לחצו או גררו תמונה כדי להחליף",
+  "aevents.coverHint": "JPEG, PNG או WebP · עד 2MB",
+  "aevents.coverClear": "ניקוי",
+  "aevents.coverSaved": "תמונת השער נשמרה ✓",
   // --- logs
   "logs.title": "יומן כניסות",
   "logs.filters": "סינון",

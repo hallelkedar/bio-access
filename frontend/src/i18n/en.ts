@@ -280,6 +280,11 @@ export const en = {
   "aevents.upload": "Upload cover",
   "aevents.coverTooLarge": "The image is too large (max 2 MB).",
   "aevents.coverBadType": "Use a real JPEG, PNG or WebP image.",
+  "aevents.coverDrop": "Click to choose an image, or drag it here",
+  "aevents.coverReplace": "Click or drop an image to replace",
+  "aevents.coverHint": "JPEG, PNG or WebP · up to 2 MB",
+  "aevents.coverClear": "Clear",
+  "aevents.coverSaved": "Cover saved ✓",
   // --- logs
   "logs.title": "Access logs",
   "logs.filters": "Filters",

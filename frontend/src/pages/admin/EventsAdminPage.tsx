@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type FormEvent } from "react";
+import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 
 import { createEvent, deleteEvent, listAllEvents, updateEvent, uploadCover, type EventInput } from "../../api/adminEvents";
 import { apiErrorMessage } from "../../api/errors";
@@ -6,8 +6,10 @@ import type { Event } from "../../api/types";
 import { ErrorBox } from "../../components/ErrorBox";
 import { FormField } from "../../components/FormField";
 import { Spinner } from "../../components/Spinner";
-import { formatDateTime, formatPrice, fromLocalInput, parsePriceToCents, toLocalInput } from "../../format";
+import { Button } from "../../components/ui";
+import { formatDateTime, formatPrice, fromLocalInput, localeFor, parsePriceToCents, toLocalInput } from "../../format";
 import { useLanguage } from "../../i18n/LanguageProvider";
+import type { Lang } from "../../i18n/translate";
 
 const STATUS_STYLE: Record<Event["status"], string> = {
   DRAFT: "bg-slate-100 text-slate-700",
@@ -54,6 +56,7 @@ export function EventsAdminPage() {
           key={editing.mode === "edit" ? editing.event.id : "new"}
           event={editing.mode === "edit" ? editing.event : null}
           onSaved={saved}
+          onCoverChanged={() => void load()}
           onCancel={() => setEditing(null)}
         />
       )}
@@ -143,7 +146,7 @@ function EventRow({ event, onEdit, onChanged }: { event: Event; onEdit: () => vo
   );
 }
 
-function EventForm({ event, onSaved, onCancel }: { event: Event | null; onSaved: () => void; onCancel: () => void }) {
+function EventForm({ event, onSaved, onCoverChanged, onCancel }: { event: Event | null; onSaved: () => void; onCoverChanged: () => void; onCancel: () => void }) {
   const [form, setForm] = useState({
     name: event?.name ?? "",
     location: event?.location ?? "",
@@ -208,16 +211,38 @@ function EventForm({ event, onSaved, onCancel }: { event: Event | null; onSaved:
           <button type="button" onClick={onCancel} className="rounded-md border px-4 py-2">{t("aevents.cancel")}</button>
         </div>
       </form>
-      {event && <CoverUpload event={event} onUploaded={onSaved} />}
+      {event && <CoverUpload event={event} onUploaded={onCoverChanged} />}
     </div>
   );
 }
 
+const COVER_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const COVER_MAX_BYTES = 2 * 1024 * 1024; // the backend's limit, checked here first to save a round trip
+
+function formatFileSize(bytes: number, lang: Lang): string {
+  const mb = bytes >= 1024 * 1024;
+  return new Intl.NumberFormat(localeFor(lang), {
+    style: "unit",
+    unit: mb ? "megabyte" : "kilobyte",
+    maximumFractionDigits: 1,
+  }).format(mb ? bytes / (1024 * 1024) : bytes / 1024);
+}
+
+/**
+ * Drop zone for the event cover. The big label next to the hidden file input (not around
+ * it) is the click target, so one click opens the picker exactly once. The zone is also the
+ * keyboard target (Enter or Space), since browsers differ on opening a focused file input.
+ * Files can be dragged onto it too.
+ */
 function CoverUpload({ event, onUploaded }: { event: Event; onUploaded: () => void }) {
+  const inputId = useId();
+  const input = useRef<HTMLInputElement>(null);
   const [file, setFile] = useState<File | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  const [savedUrl, setSavedUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [dragging, setDragging] = useState(false);
   const { t, lang } = useLanguage();
 
   useEffect(() => {
@@ -227,35 +252,88 @@ function CoverUpload({ event, onUploaded }: { event: Event; onUploaded: () => vo
     return () => URL.revokeObjectURL(url);
   }, [file]);
 
+  function choose(picked: File | undefined) {
+    setError(null);
+    setSavedUrl((url) => (picked ? null : url));
+    if (!picked) return;
+    if (!COVER_TYPES.includes(picked.type)) return setError(t("aevents.coverBadType"));
+    if (picked.size > COVER_MAX_BYTES) return setError(t("aevents.coverTooLarge"));
+    setFile(picked);
+  }
+
   async function upload() {
     if (!file) return;
     setUploading(true);
     setError(null);
     try {
-      await uploadCover(event.id, file);
+      const updated = await uploadCover(event.id, file);
+      setSavedUrl(updated.cover_image_url ?? preview);
+      setFile(null);
       onUploaded();
     } catch (err) {
       setError(apiErrorMessage(err, { 413: t("aevents.coverTooLarge"), 415: t("aevents.coverBadType") }, lang));
+    } finally {
       setUploading(false);
     }
   }
 
+  const shown = preview ?? savedUrl ?? event.cover_image_url;
   return (
     <div className="space-y-3 border-t border-slate-100 pt-4">
       <h3 className="font-medium">{t("aevents.coverTitle")}</h3>
-      {(preview ?? event.cover_image_url) && (
-        <img src={preview ?? event.cover_image_url ?? undefined} alt={t("aevents.coverPreview")} className="h-32 rounded object-cover" />
-      )}
-      <div className="flex flex-wrap items-center gap-3">
-        <label className="text-sm">
-          <span className="sr-only">{t("aevents.chooseCover")}</span>
-          <input type="file" accept="image/jpeg,image/png,image/webp" aria-label={t("aevents.chooseCover")}
-            onChange={(e) => setFile(e.target.files?.[0] ?? null)} />
-        </label>
-        <button type="button" onClick={() => void upload()} disabled={!file || uploading}
-          className="rounded-md border px-3 py-1.5 text-sm disabled:opacity-50">
+      <input ref={input} id={inputId} type="file" accept={COVER_TYPES.join(",")} aria-label={t("aevents.chooseCover")} tabIndex={-1} className="sr-only"
+        onChange={(e) => {
+          choose(e.target.files?.[0]);
+          e.target.value = ""; // picking the same file again must still fire onChange
+        }} />
+      <label
+        htmlFor={inputId}
+        tabIndex={0}
+        role="button"
+        onKeyDown={(e) => {
+          if (e.key !== "Enter" && e.key !== " ") return;
+          e.preventDefault();
+          input.current?.click();
+        }}
+        data-dragging={dragging || undefined}
+        onDragEnter={(e) => { e.preventDefault(); setDragging(true); }}
+        onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
+        onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false); }}
+        onDrop={(e) => { e.preventDefault(); setDragging(false); choose(e.dataTransfer.files[0]); }}
+        className={`group relative flex min-h-40 cursor-pointer flex-col items-center justify-center gap-2 overflow-hidden rounded-card border-2 border-dashed px-6 py-6 text-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 ${
+          dragging ? "border-brand-500 bg-brand-50" : "border-slate-300 bg-slate-50 hover:border-brand-400 hover:bg-brand-50/60"
+        }`}
+      >
+        {shown ? (
+          <>
+            <img src={shown} alt={t("aevents.coverPreview")} className="absolute inset-0 h-full w-full object-cover" />
+            <span className="relative rounded-full bg-slate-900/75 px-3 py-1.5 text-sm font-medium text-white opacity-90 backdrop-blur-sm transition-opacity group-hover:opacity-100">
+              {t("aevents.coverReplace")}
+            </span>
+          </>
+        ) : (
+          <>
+            <svg viewBox="0 0 24 24" className="h-9 w-9 text-brand-500" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <rect x="3" y="4" width="18" height="16" rx="3" />
+              <circle cx="9" cy="10" r="1.8" />
+              <path d="M21 16l-5-5-8 8" />
+            </svg>
+            <span className="text-sm font-medium text-slate-800">{t("aevents.coverDrop")}</span>
+            <span className="text-xs text-slate-500">{t("aevents.coverHint")}</span>
+          </>
+        )}
+      </label>
+      <div className="flex flex-wrap items-center gap-3 text-sm">
+        {file && (
+          <>
+            <span className="min-w-0 truncate text-slate-700"><bdi className="font-medium">{file.name}</bdi> · {formatFileSize(file.size, lang)}</span>
+            <Button variant="ghost" size="sm" onClick={() => setFile(null)} disabled={uploading}>{t("aevents.coverClear")}</Button>
+          </>
+        )}
+        {savedUrl && !file && <span role="status" className="font-medium text-emerald-700">{t("aevents.coverSaved")}</span>}
+        <Button variant="secondary" size="sm" className="ms-auto" onClick={() => void upload()} disabled={!file} loading={uploading}>
           {uploading ? t("aevents.uploading") : t("aevents.upload")}
-        </button>
+        </Button>
       </div>
       <ErrorBox message={error} />
     </div>

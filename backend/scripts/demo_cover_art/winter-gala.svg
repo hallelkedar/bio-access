@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b1533"/><stop offset="1" stop-color="#1e1b4b"/></linearGradient>
+    <radialGradient id="halo" cx="0.5" cy="0.38" r="0.45"><stop offset="0" stop-color="#fcd34d" stop-opacity="0.45"/><stop offset="1" stop-color="#fcd34d" stop-opacity="0"/></radialGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fef3c7"/><stop offset="1" stop-color="#d97706"/></linearGradient>
+    <g id="flake" stroke="#e0e7ff" stroke-width="3" stroke-linecap="round" fill="none"><path d="M0-22V22M-19-11L19 11M-19 11L19-11"/><path d="M-6-16L0-10L6-16M-6 16L0 10L6 16"/></g>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <rect width="1600" height="900" fill="url(#halo)"/>
+  <path d="M800 0V120" stroke="url(#gold)" stroke-width="6"/>
+  <g fill="none" stroke="url(#gold)" stroke-width="7" stroke-linecap="round">
+    <path d="M560 300Q800 420 1040 300"/><path d="M620 230Q800 320 980 230"/><path d="M680 170Q800 230 920 170"/><path d="M800 120V430"/>
+  </g>
+  <g fill="#fde68a">
+    <path d="M560 300l-14 40h28z"/><path d="M1040 300l-14 40h28z"/><path d="M620 230l-12 34h24z"/><path d="M980 230l-12 34h24z"/><path d="M680 170l-10 28h20z"/><path d="M920 170l-10 28h20z"/>
+    <circle cx="800" cy="450" r="22"/>
+  </g>
+  <g fill="#fef9c3">
+    <path d="M700 352l-6 70 6 18 6-18z" fill-opacity="0.8"/><path d="M900 352l-6 70 6 18 6-18z" fill-opacity="0.8"/><path d="M760 372l-5 60 5 15 5-15z" fill-opacity="0.7"/><path d="M840 372l-5 60 5 15 5-15z" fill-opacity="0.7"/>
+  </g>
+  <g fill-opacity="0.9">
+    <use href="#flake" x="200" y="160"/><use href="#flake" x="340" y="420" transform="scale(1)"/><use href="#flake" x="1350" y="200"/><use href="#flake" x="1240" y="520"/><use href="#flake" x="130" y="640"/><use href="#flake" x="1480" y="720"/><use href="#flake" x="470" y="760"/><use href="#flake" x="1100" y="780"/>
+  </g>
+  <g fill="#e0e7ff"><circle cx="260" cy="300" r="3"/><circle cx="420" cy="220" r="2"/><circle cx="1180" cy="140" r="3"/><circle cx="1420" cy="420" r="2"/><circle cx="600" cy="640" r="3"/><circle cx="980" cy="610" r="2"/><circle cx="1300" cy="820" r="3"/><circle cx="80" cy="480" r="2"/></g>
+  <path d="M0 860Q400 800 800 860T1600 840V900H0z" fill="#fef3c7" fill-opacity="0.08"/>
+</svg>

@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900">
+  <defs>
+    <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0e7490"/><stop offset="0.45" stop-color="#f59e0b"/><stop offset="1" stop-color="#fb7185"/></linearGradient>
+    <linearGradient id="sea" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#0891b2"/><stop offset="1" stop-color="#164e63"/></linearGradient>
+    <linearGradient id="stone" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fcd9a8"/><stop offset="1" stop-color="#b45309"/></linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#sky)"/>
+  <circle cx="800" cy="430" r="120" fill="#fef3c7" fill-opacity="0.95"/>
+  <rect y="430" width="1600" height="140" fill="url(#sea)"/>
+  <g stroke="#fef3c7" stroke-opacity="0.6" stroke-linecap="round"><path d="M700 470h200" stroke-width="6"/><path d="M730 505h140" stroke-width="5"/><path d="M760 540h80" stroke-width="4"/></g>
+  <g fill="none" stroke="url(#stone)" stroke-linecap="round">
+    <path d="M60 900A740 380 0 0 1 1540 900" stroke-width="44"/>
+    <path d="M200 900A600 300 0 0 1 1400 900" stroke-width="40"/>
+    <path d="M340 900A460 220 0 0 1 1260 900" stroke-width="36"/>
+  </g>
+  <g fill="#7c2d12" fill-opacity="0.45">
+    <path d="M60 900A740 380 0 0 1 1540 900" fill="none" stroke="#7c2d12" stroke-opacity="0.35" stroke-width="4" stroke-dasharray="6 26"/>
+  </g>
+  <rect x="640" y="760" width="320" height="140" rx="6" fill="#7c2d12"/>
+  <g fill="#fde68a"><rect x="660" y="740" width="20" height="40"/><rect x="920" y="740" width="20" height="40"/></g>
+  <g fill="#fff7ed"><path d="M330 150c20-12 40-12 60 0-20 4-40 4-60 0z"/><path d="M1180 110c26-15 52-15 78 0-26 5-52 5-78 0z"/><path d="M1290 180c16-10 32-10 48 0-16 3-32 3-48 0z"/></g>
+</svg>

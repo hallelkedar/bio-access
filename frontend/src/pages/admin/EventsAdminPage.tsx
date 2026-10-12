@@ -300,7 +300,9 @@ function CoverUpload({ event, onUploaded }: { event: Event; onUploaded: () => vo
         onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "copy"; }}
         onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDragging(false); }}
         onDrop={(e) => { e.preventDefault(); setDragging(false); choose(e.dataTransfer.files[0]); }}
-        className={`group relative flex min-h-40 cursor-pointer flex-col items-center justify-center gap-2 overflow-hidden rounded-card border-2 border-dashed px-6 py-6 text-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 ${
+        className={`group relative flex cursor-pointer flex-col items-center justify-center gap-2 overflow-hidden rounded-card border-2 border-dashed px-6 py-6 text-center transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand-500 ${
+          shown ? "aspect-[2/1] w-full max-w-md" : "min-h-40" /* same shape as the visitor's event card */
+        } ${
           dragging ? "border-brand-500 bg-brand-50" : "border-slate-300 bg-slate-50 hover:border-brand-400 hover:bg-brand-50/60"
         }`}
       >

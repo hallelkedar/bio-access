@@ -3,6 +3,7 @@ from collections.abc import Mapping
 import stripe
 
 from app.providers.payment.base import (
+    CheckoutAlreadyPaidError,
     CheckoutSession,
     InvalidWebhookError,
     PaymentProvider,
@@ -81,6 +82,22 @@ class StripePaymentProvider(PaymentProvider):
         else:
             return None
         return WebhookEvent(event_id=event.id, type=event_type, session_id=session.id)
+
+    def expire_checkout(self, session_id: str) -> None:
+        # Stripe only expires "open" sessions; look first so a completed or already expired
+        # one gets a clear answer instead of a generic InvalidRequestError.
+        status = self.get_session_status(session_id)
+        if status == SessionStatus.PAID:
+            raise CheckoutAlreadyPaidError(session_id)
+        if status == SessionStatus.EXPIRED:
+            return
+        try:
+            self._client.v1.checkout.sessions.expire(session_id)
+        except stripe.StripeError as exc:
+            # Paid in the moment between the two calls? Ask again before giving up.
+            if self.get_session_status(session_id) == SessionStatus.PAID:
+                raise CheckoutAlreadyPaidError(session_id) from None
+            raise PaymentProviderError(f"stripe: {type(exc).__name__}") from None
 
     def get_session_status(self, session_id: str) -> SessionStatus:
         try:

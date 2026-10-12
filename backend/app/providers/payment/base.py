@@ -38,6 +38,10 @@ class InvalidWebhookError(Exception):
     """Bad signature or malformed payload."""
 
 
+class CheckoutAlreadyPaidError(Exception):
+    """The checkout can't be closed: the customer has already paid it."""
+
+
 class PaymentProvider(ABC):
     name: str
 
@@ -60,6 +64,14 @@ class PaymentProvider(ABC):
 
         Returns None for event types we don't handle.
         Raises InvalidWebhookError if the signature or payload is invalid.
+        """
+
+    @abstractmethod
+    def expire_checkout(self, session_id: str) -> None:
+        """Close an open checkout so it can no longer be paid (an already expired one is fine).
+
+        Raises CheckoutAlreadyPaidError if it was paid, PaymentProviderError if the
+        provider can't answer.
         """
 
     @abstractmethod

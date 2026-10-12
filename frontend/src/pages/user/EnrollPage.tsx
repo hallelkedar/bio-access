@@ -1,5 +1,7 @@
 import { AxiosError } from "axios";
 import { useEffect, useState } from "react";
+
+import { checkVideoFrame, hasHardFailure, type PhotoCheck, type PhotoIssue } from "../../enroll/photoChecks";
 import { Link, useParams } from "react-router";
 
 import { enrollFace, type QualityIssue } from "../../api/enrollment";
@@ -9,8 +11,10 @@ import type { MyTicket } from "../../api/types";
 import { Camera } from "../../components/Camera";
 import { ErrorBox } from "../../components/ErrorBox";
 import { Spinner } from "../../components/Spinner";
+import { ConfirmDialog } from "../../components/ui";
 import { useCamera } from "../../hooks/useCamera";
 import { useLanguage } from "../../i18n/LanguageProvider";
+import type { TranslationKey } from "../../i18n/en";
 import { translate, type Lang } from "../../i18n/translate";
 
 /** English tips (kept for compatibility); the page shows qualityTip() in the current language. */
@@ -29,8 +33,8 @@ type Step =
   | { name: "blocked"; message: string }
   | { name: "consent" }
   | { name: "camera"; tips: string[]; error: string | null }
-  | { name: "review"; photo: Blob }
-  | { name: "uploading"; photo: Blob }
+  | { name: "review"; photo: Blob; check: PhotoCheck | null }
+  | { name: "uploading"; photo: Blob; check: PhotoCheck | null }
   | { name: "done" };
 
 function qualityIssues(error: unknown): QualityIssue[] | null {
@@ -42,6 +46,21 @@ function qualityIssues(error: unknown): QualityIssue[] | null {
 export function qualityTip(lang: Lang, issue: QualityIssue): string {
   return translate(lang, `quality.${issue}`);
 }
+
+/** Tips for the browser's own photo checks (photoChecks.ts), reusing the server's wording. */
+const CLIENT_TIP: Record<PhotoIssue, TranslationKey> = {
+  TOO_DARK: "quality.TOO_DARK",
+  TOO_BRIGHT: "quality.TOO_BRIGHT",
+  BLURRY: "quality.BLURRY",
+  TOO_SMALL: "quality.TOO_SMALL",
+  NO_FACE: "quality.NO_FACE",
+  MULTIPLE_FACES: "quality.MULTIPLE_FACES",
+  FACE_TOO_SMALL: "quality.TOO_SMALL",
+  OFF_CENTER: "quality.OFF_CENTER",
+};
+
+/** How often the live preview is checked. */
+const LIVE_CHECK_MS = 400;
 
 export function EnrollPage() {
   const { t, lang } = useLanguage();
@@ -67,8 +86,8 @@ export function EnrollPage() {
     };
   }, [ticketId]); // loaded once per ticket; messages use the language of that moment
 
-  async function upload(photo: Blob) {
-    setStep({ name: "uploading", photo });
+  async function upload(photo: Blob, check: PhotoCheck | null) {
+    setStep({ name: "uploading", photo, check });
     try {
       await enrollFace(ticketId, photo);
       setStep({ name: "done" }); // the photo is no longer referenced anywhere
@@ -94,14 +113,15 @@ export function EnrollPage() {
         {step.name === "blocked" && <Blocked message={step.message} />}
         {step.name === "consent" && <Consent onAccept={() => setStep({ name: "camera", tips: [], error: null })} />}
         {step.name === "camera" && (
-          <CaptureStep tips={step.tips} error={step.error} onCaptured={(photo) => setStep({ name: "review", photo })} />
+          <CaptureStep tips={step.tips} error={step.error} onCaptured={(photo, check) => setStep({ name: "review", photo, check })} />
         )}
         {(step.name === "review" || step.name === "uploading") && (
           <Review
             photo={step.photo}
+            check={step.check}
             uploading={step.name === "uploading"}
             onRetake={() => setStep({ name: "camera", tips: [], error: null })}
-            onUse={() => void upload(step.photo)}
+            onUse={() => void upload(step.photo, step.check)}
           />
         )}
         {step.name === "done" && <Done />}
@@ -144,23 +164,55 @@ function Consent({ onAccept }: { onAccept: () => void }) {
   );
 }
 
-function CaptureStep({ tips, error, onCaptured }: { tips: string[]; error: string | null; onCaptured: (photo: Blob) => void }) {
+function CaptureStep({ tips, error, onCaptured }: { tips: string[]; error: string | null; onCaptured: (photo: Blob, check: PhotoCheck | null) => void }) {
   const { t } = useLanguage();
   const camera = useCamera();
   const [capturing, setCapturing] = useState(false);
   const [captureError, setCaptureError] = useState<string | null>(null);
+  const [live, setLive] = useState<PhotoCheck | null>(null);
+  const [warning, setWarning] = useState<PhotoCheck | null>(null); // asks "take it anyway?"
+  const { status, videoRef } = camera;
 
-  async function takePhoto() {
-    setCapturing(true);
+  // Check the preview a few times a second (in memory only). Advice: the server decides.
+  useEffect(() => {
+    if (status !== "ready") return;
+    let alive = true;
+    let busy = false;
+    const timer = setInterval(() => {
+      const video = videoRef.current;
+      if (!video || busy) return;
+      busy = true;
+      void checkVideoFrame(video)
+        .then((check) => {
+          if (alive && check) setLive((prev) => (prev && sameFindings(prev, check) ? prev : check));
+        })
+        .finally(() => {
+          busy = false;
+        });
+    }, LIVE_CHECK_MS);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [status, videoRef]);
+
+  async function takePhoto(anyway = false) {
+    setWarning(null);
     setCaptureError(null);
+    const video = videoRef.current;
+    const check = video ? await checkVideoFrame(video) : null; // the frame we're about to take
+    if (!anyway && check && check.findings.length > 0) return setWarning(check);
+    setCapturing(true);
     try {
-      onCaptured(await camera.capture());
+      onCaptured(await camera.capture(), check);
     } catch {
       setCaptureError(t("enroll.captureFailed"));
       setCapturing(false);
     }
   }
 
+  const ok = live !== null && live.findings.length === 0;
+  const oval = live === null ? "border-white/80" : ok ? "border-emerald-400" : "border-amber-400";
   return (
     <div className="space-y-4">
       {tips.length > 0 && (
@@ -173,23 +225,97 @@ function CaptureStep({ tips, error, onCaptured }: { tips: string[]; error: strin
       )}
       <ErrorBox message={error ?? captureError} />
       <Camera camera={camera}>
-        {/* Face guide */}
+        {/* Face guide: turns green when the live checks pass */}
         <div aria-hidden className="pointer-events-none absolute inset-0 flex items-center justify-center">
-          <div className="h-3/4 aspect-[3/4] rounded-[50%] border-4 border-white/80 shadow-[0_0_0_9999px_rgba(15,23,42,0.35)]" />
+          <div className={`h-3/4 aspect-[3/4] rounded-[50%] border-4 transition-colors duration-300 shadow-[0_0_0_9999px_rgba(15,23,42,0.35)] ${oval}`} />
         </div>
+        {live && (
+          <div className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center px-3">
+            <LiveChip check={live} />
+          </div>
+        )}
       </Camera>
       <p className="text-sm text-slate-600">{t("enroll.captureHint")}</p>
       <button type="button" onClick={() => void takePhoto()} disabled={camera.status !== "ready" || capturing}
         className="rounded-md bg-slate-900 px-4 py-2 text-white disabled:opacity-50">
         {t("enroll.takePhoto")}
       </button>
+      <ConfirmDialog
+        open={warning !== null}
+        title={t("enroll.warnTitle")}
+        message={warning && <TipList check={warning} />}
+        confirmLabel={t("enroll.warnTake")}
+        cancelLabel={t("enroll.warnAdjust")}
+        onConfirm={() => void takePhoto(true)}
+        onCancel={() => setWarning(null)}
+      />
     </div>
   );
 }
 
-function Review({ photo, uploading, onRetake, onUse }: { photo: Blob; uploading: boolean; onRetake: () => void; onUse: () => void }) {
+function sameFindings(a: PhotoCheck, b: PhotoCheck): boolean {
+  const key = (c: PhotoCheck) => c.findings.map((f) => `${f.issue}:${f.hard}`).join(",");
+  return key(a) === key(b) && a.faceChecked === b.faceChecked;
+}
+
+function LiveChip({ check }: { check: PhotoCheck }) {
+  const { t } = useLanguage();
+  const first = check.findings[0];
+  return (
+    <p role="status" aria-live="polite"
+      className={`rounded-full px-3 py-1.5 text-sm font-medium shadow-lg backdrop-blur ${first ? "bg-amber-50/95 text-amber-900" : "bg-emerald-50/95 text-emerald-800"}`}>
+      {first ? t(CLIENT_TIP[first.issue]) : t(check.faceChecked ? "enroll.looksGood" : "enroll.lightFocusGood")}
+    </p>
+  );
+}
+
+function TipList({ check }: { check: PhotoCheck }) {
+  const { t } = useLanguage();
+  const tips = [...new Set(check.findings.map((f) => t(CLIENT_TIP[f.issue])))];
+  return (
+    <ul className="list-disc space-y-1 ps-5">
+      {tips.map((tip) => <li key={tip}>{tip}</li>)}
+    </ul>
+  );
+}
+
+type Row = { key: TranslationKey; issues: PhotoIssue[] };
+const ROWS: Row[] = [
+  { key: "enroll.check.lighting", issues: ["TOO_DARK", "TOO_BRIGHT"] },
+  { key: "enroll.check.sharpness", issues: ["BLURRY"] },
+  { key: "enroll.check.size", issues: ["TOO_SMALL"] },
+  { key: "enroll.check.face", issues: ["NO_FACE", "MULTIPLE_FACES", "FACE_TOO_SMALL", "OFF_CENTER"] },
+];
+
+/** The photo check after capture: ✓ / ! (may be rejected) / ✕ (would be rejected) per row. */
+function Checklist({ check }: { check: PhotoCheck }) {
+  const { t } = useLanguage();
+  return (
+    <ul aria-label={t("enroll.check.title")} className="divide-y divide-slate-100 rounded-lg border border-slate-200 bg-white text-sm">
+      {ROWS.map(({ key, issues }) => {
+        const found = check.findings.filter((f) => issues.includes(f.issue));
+        const notChecked = key === "enroll.check.face" && !check.faceChecked;
+        const hard = found.some((f) => f.hard);
+        const mark = notChecked ? "–" : found.length === 0 ? "✓" : hard ? "✕" : "!";
+        const tone = notChecked ? "text-slate-400" : found.length === 0 ? "text-emerald-600" : hard ? "text-deny-600" : "text-amber-600";
+        return (
+          <li key={key} data-row={key} data-mark={mark} className="flex items-start gap-3 px-3 py-2">
+            <span aria-hidden="true" className={`w-4 shrink-0 text-center font-bold ${tone}`}>{mark}</span>
+            <span className="font-medium text-slate-800">{t(key)}</span>
+            <span className="ms-auto text-end text-slate-600">
+              {notChecked ? t("enroll.check.notChecked") : found.length === 0 ? t("enroll.check.ok") : t(CLIENT_TIP[found[0]!.issue])}
+            </span>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+function Review({ photo, check, uploading, onRetake, onUse }: { photo: Blob; check: PhotoCheck | null; uploading: boolean; onRetake: () => void; onUse: () => void }) {
   const { t } = useLanguage();
   const [url, setUrl] = useState<string | null>(null);
+  const blocked = check !== null && hasHardFailure(check);
 
   useEffect(() => {
     const objectUrl = URL.createObjectURL(photo);
@@ -200,14 +326,18 @@ function Review({ photo, uploading, onRetake, onUse }: { photo: Blob; uploading:
   return (
     <div className="space-y-4">
       {url && <img src={url} alt={t("enroll.photoAlt")} className="w-full -scale-x-100 rounded-lg" />}
+      {check && <Checklist check={check} />}
+      {blocked && <p role="alert" className="text-sm font-medium text-deny-700">{t("enroll.check.blocked")}</p>}
       {uploading ? (
         <Spinner label={t("enroll.checking")} />
       ) : (
         <div className="flex gap-3">
-          <button type="button" onClick={onUse} className="rounded-md bg-slate-900 px-4 py-2 text-white">
+          <button type="button" onClick={onUse} disabled={blocked}
+            className="rounded-md bg-slate-900 px-4 py-2 text-white disabled:cursor-not-allowed disabled:opacity-40">
             {t("enroll.usePhoto")}
           </button>
-          <button type="button" onClick={onRetake} className="rounded-md border px-4 py-2">
+          <button type="button" onClick={onRetake}
+            className={blocked ? "rounded-md bg-brand-600 px-4 py-2 font-medium text-white" : "rounded-md border px-4 py-2"}>
             {t("enroll.retake")}
           </button>
         </div>

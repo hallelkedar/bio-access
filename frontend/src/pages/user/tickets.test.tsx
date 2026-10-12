@@ -40,6 +40,8 @@ const event = (name: string, starts: string, ends: string) => ({
   location: "Haifa",
   starts_at: starts,
   ends_at: ends,
+  status: "ACTIVE" as const,
+  cover_image_url: null,
 });
 
 describe("sortTickets", () => {

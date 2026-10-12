@@ -24,7 +24,10 @@ export function makeTicket(status: TicketStatus, overrides: Partial<MyTicket> = 
     status,
     purchased_at: "2026-10-01T10:00:00Z",
     entered_at: null,
-    event: { id: event.id, name: event.name, location: event.location, starts_at: event.starts_at, ends_at: event.ends_at },
+    event: {
+      id: event.id, name: event.name, location: event.location, starts_at: event.starts_at, ends_at: event.ends_at,
+      status: event.status, cover_image_url: event.cover_image_url,
+    },
     qr_token: status === "VALID" ? "qr-token" : null,
     enrolled: false,
     ...overrides,

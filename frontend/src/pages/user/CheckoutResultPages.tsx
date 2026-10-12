@@ -1,11 +1,12 @@
-import { useEffect, useState } from "react";
-import { Link, useSearchParams } from "react-router";
+import { useEffect, useState, type ReactNode } from "react";
+import { useSearchParams } from "react-router";
 
 import { apiErrorMessage } from "../../api/errors";
 import { myTickets, refreshPayment, startCheckout } from "../../api/tickets";
 import type { TicketStatus } from "../../api/types";
 import { ErrorBox } from "../../components/ErrorBox";
 import { Spinner } from "../../components/Spinner";
+import { Button, ButtonLink, Card, Confetti } from "../../components/ui";
 import { useLanguage } from "../../i18n/LanguageProvider";
 import { redirectTo } from "../../navigation";
 
@@ -73,35 +74,37 @@ export function CheckoutSuccessPage({
   }, [ticketId, pollMs, maxWaitMs, refreshKey, round]);
 
   return (
-    <section className="mx-auto max-w-md text-center">
+    <ResultCard>
       {outcome === "waiting" && <Spinner label={t("checkout.confirming")} />}
       {outcome === "confirming" && <Spinner label={t("checkout.confirmingProvider")} />}
       {outcome === "ready" && (
         <>
-          <h1 className="text-2xl font-bold text-emerald-700">{t("checkout.receivedTitle")}</h1>
-          <p className="mt-2 text-slate-600">{t("checkout.receivedBody")}</p>
-          <Link to="/tickets" className="mt-6 inline-block rounded-md bg-slate-900 px-4 py-2 text-white">
-            {t("checkout.myTickets")}
-          </Link>
+          <Confetti />
+          <ResultIcon tone="ok" path="M15 27l7 7 15-16" />
+          <h1 className="mt-5 text-2xl font-bold text-ok-700">{t("checkout.receivedTitle")}</h1>
+          <p className="mt-2 text-muted">{t("checkout.receivedBody")}</p>
+          <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+            <ButtonLink to="/tickets" className="min-h-11">{t("checkout.myTickets")}</ButtonLink>
+            <ButtonLink to="/events" variant="secondary" className="min-h-11">{t("checkout.browseEvents")}</ButtonLink>
+          </div>
         </>
       )}
       {outcome === "slow" && (
         <>
-          <h1 className="text-2xl font-bold">{t("checkout.slowTitle")}</h1>
-          <p className="mt-2 text-slate-600">{t("checkout.slowBody")}</p>
-          <button type="button" onClick={() => setRound((r) => r + 1)}
-            className="mt-6 rounded-md bg-slate-900 px-4 py-2 text-white">
-            {t("checkout.checkAgain")}
-          </button>
+          <ResultIcon tone="warn" path="M26 16v11l7 4" circle />
+          <h1 className="mt-5 text-2xl font-bold">{t("checkout.slowTitle")}</h1>
+          <p className="mt-2 text-muted">{t("checkout.slowBody")}</p>
+          <Button onClick={() => setRound((r) => r + 1)} className="mt-6 min-h-11">{t("checkout.checkAgain")}</Button>
         </>
       )}
       {outcome === "missing" && (
         <>
-          <h1 className="text-2xl font-bold">{t("checkout.missingTitle")}</h1>
-          <Link to="/events" className="mt-4 inline-block text-blue-700 underline">{t("checkout.backToEvents")}</Link>
+          <ResultIcon tone="neutral" path="M26 17v11M26 35v.5" circle />
+          <h1 className="mt-5 text-2xl font-bold">{t("checkout.missingTitle")}</h1>
+          <ButtonLink to="/events" variant="secondary" className="mt-6 min-h-11">{t("checkout.backToEvents")}</ButtonLink>
         </>
       )}
-    </section>
+    </ResultCard>
   );
 }
 
@@ -123,17 +126,44 @@ export function CheckoutCancelPage() {
   }
 
   return (
-    <section className="mx-auto max-w-md text-center">
-      <h1 className="text-2xl font-bold">{t("checkout.cancelledTitle")}</h1>
-      <p className="mt-2 text-slate-600">{t("checkout.cancelledBody")}</p>
-      <div className="mt-6 flex justify-center gap-4">
-        <button type="button" onClick={() => void retry()} disabled={busy || !ticketId}
-          className="rounded-md bg-slate-900 px-4 py-2 text-white disabled:opacity-50">
+    <ResultCard>
+      <ResultIcon tone="neutral" path="M19 19l14 14M33 19 19 33" circle />
+      <h1 className="mt-5 text-2xl font-bold">{t("checkout.cancelledTitle")}</h1>
+      <p className="mt-2 text-muted">{t("checkout.cancelledBody")}</p>
+      <div className="mt-6 flex flex-col justify-center gap-3 sm:flex-row">
+        <Button onClick={() => void retry()} loading={busy} disabled={!ticketId} className="min-h-11">
           {busy ? t("common.redirecting") : t("checkout.tryAgain")}
-        </button>
-        <Link to="/events" className="rounded-md border px-4 py-2">{t("checkout.backToEvents")}</Link>
+        </Button>
+        <ButtonLink to="/events" variant="secondary" className="min-h-11">{t("checkout.backToEvents")}</ButtonLink>
       </div>
-      <div className="mt-4"><ErrorBox message={error} /></div>
+      <div className="mt-4 text-start"><ErrorBox message={error} /></div>
+    </ResultCard>
+  );
+}
+
+function ResultCard({ children }: { children: ReactNode }) {
+  return (
+    <section className="flex justify-center py-6 sm:py-10">
+      <Card className="relative flex w-full max-w-md flex-col items-center px-6 py-10 text-center">{children}</Card>
     </section>
+  );
+}
+
+const TONES = {
+  ok: "bg-ok-50 text-ok-600",
+  warn: "bg-warn-50 text-warn-600",
+  neutral: "bg-surface-2 text-muted",
+} as const;
+
+/** A round badge with a stroked symbol that draws itself in. */
+function ResultIcon({ tone, path, circle = false }: { tone: keyof typeof TONES; path: string; circle?: boolean }) {
+  return (
+    <span className={`flex h-16 w-16 animate-pop-in items-center justify-center rounded-full ${TONES[tone]}`}>
+      <svg viewBox="0 0 52 52" className="h-10 w-10" fill="none" stroke="currentColor" strokeWidth="4"
+        strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+        {circle && <circle cx="26" cy="26" r="17" strokeWidth="3" opacity="0.35" />}
+        <path pathLength={1} className="animate-draw [stroke-dasharray:1]" d={path} />
+      </svg>
+    </span>
   );
 }

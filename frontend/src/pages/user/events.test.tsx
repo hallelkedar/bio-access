@@ -212,6 +212,7 @@ describe("checkout return pages", () => {
     expect(screen.getByText("Confirming your payment…")).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "Payment received!" })).toBeInTheDocument();
     expect(screen.getByRole("link", { name: "My tickets" })).toHaveAttribute("href", "/tickets");
+    expect(screen.getByTestId("confetti")).toBeInTheDocument();
     expect(tickets.myTickets).toHaveBeenCalledTimes(3);
   });
 
@@ -221,6 +222,7 @@ describe("checkout return pages", () => {
     renderPage(<CheckoutSuccessPage pollMs={5} maxWaitMs={30} refreshAtMs={[]} />, "/checkout/success?ticket_id=42");
 
     expect(await screen.findByRole("heading", { name: "Payment is being processed" })).toBeInTheDocument();
+    expect(screen.queryByTestId("confetti")).toBeNull();
     expect(tickets.refreshPayment).not.toHaveBeenCalled();
   });
 

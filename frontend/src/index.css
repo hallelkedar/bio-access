@@ -77,6 +77,7 @@
   --animate-burst: burst 900ms ease-out both;
   --animate-pop-in: pop-in 180ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
   --animate-fade-in: fade-in 180ms ease-out both;
+  --animate-confetti: confetti-fall 1.6s cubic-bezier(0.25, 0.6, 0.45, 1) both;
   --animate-route-in: route-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
   --animate-drawer-in: drawer-in 220ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
   --animate-ticket-flash: ticket-flash 1.8s ease-out 250ms both;
@@ -145,6 +146,13 @@
   @keyframes feed-flash {
     from { background-color: var(--feed-flash, transparent); }
     to { background-color: transparent; }
+  }
+  /* Per-piece drift/spin come from --confetti-drift / --confetti-spin (Confetti.tsx) */
+  @keyframes confetti-fall {
+    0% { opacity: 0; transform: translate3d(0, 0, 0) rotate(0); }
+    10% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { opacity: 0; transform: translate3d(var(--confetti-drift, 0), 22rem, 0) rotate(var(--confetti-spin, 360deg)); }
   }
   @keyframes route-in {
     from { opacity: 0; transform: translateY(6px); }

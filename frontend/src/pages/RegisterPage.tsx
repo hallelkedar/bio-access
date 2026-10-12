@@ -4,9 +4,16 @@ import { Link, Navigate, useNavigate } from "react-router";
 import { apiErrorMessage } from "../api/errors";
 import { useAuth } from "../auth/AuthContext";
 import { HOME_BY_ROLE } from "../auth/roles";
+import { validateRegister, type RegisterField } from "../auth/validation";
+import { useFieldValidation } from "../hooks/useFieldValidation";
 import { useLanguage } from "../i18n/LanguageProvider";
 import { ErrorBox } from "../components/ErrorBox";
 import { FormField } from "../components/FormField";
+import { PasswordField } from "../components/PasswordField";
+import { Button } from "../components/ui";
+import { AUTH_LINK, AuthCard } from "./AuthCard";
+
+const FIELDS: readonly RegisterField[] = ["full_name", "email", "phone", "password"];
 
 export function RegisterPage() {
   const { register, user } = useAuth();
@@ -15,17 +22,26 @@ export function RegisterPage() {
   const [form, setForm] = useState({ full_name: "", email: "", phone: "", password: "" });
   const [error, setError] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  const { errorFor, touch, validateAll } = useFieldValidation(validateRegister(form), FIELDS);
 
-  function update(field: keyof typeof form) {
-    return (event: { target: { value: string } }) => setForm({ ...form, [field]: event.target.value });
+  function field(name: RegisterField) {
+    const key = errorFor(name);
+    return {
+      name,
+      value: form[name],
+      onChange: (event: { target: { value: string } }) => setForm({ ...form, [name]: event.target.value }),
+      onBlur: touch(name),
+      error: key && t(key),
+    };
   }
 
   if (user && !sending) {
     return <Navigate to={HOME_BY_ROLE[user.role]} replace />; // already signed in
   }
 
-  async function onSubmit(event: FormEvent) {
+  async function onSubmit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (!validateAll(event)) return;
     setError(null);
     setSending(true);
     try {
@@ -38,26 +54,19 @@ export function RegisterPage() {
   }
 
   return (
-    <section className="mx-auto max-w-sm">
-      <h1 className="text-2xl font-bold">{t("register.title")}</h1>
+    <AuthCard title={t("register.title")} subtitle={t("register.subtitle")}
+      footer={<>{t("register.haveAccount")} <Link to="/login" className={AUTH_LINK}>{t("register.loginLink")}</Link></>}>
       <form onSubmit={onSubmit} className="mt-6 space-y-4" noValidate>
-        <FormField label={t("register.fullName")} name="full_name" autoComplete="name" required value={form.full_name}
-          onChange={update("full_name")} />
-        <FormField label={t("field.email")} name="email" type="email" autoComplete="email" required value={form.email}
-          onChange={update("email")} />
-        <FormField label={t("register.phone")} name="phone" type="tel" autoComplete="tel" value={form.phone}
-          onChange={update("phone")} hint={t("register.phoneHint")} />
-        <FormField label={t("field.password")} name="password" type="password" autoComplete="new-password" required
-          minLength={8} value={form.password} onChange={update("password")} hint={t("register.passwordHint")} />
+        <FormField label={t("register.fullName")} autoComplete="name" required autoFocus {...field("full_name")} />
+        <FormField label={t("field.email")} type="email" autoComplete="email" required {...field("email")} />
+        <FormField label={t("register.phone")} type="tel" autoComplete="tel" hint={t("register.phoneHint")} {...field("phone")} />
+        <PasswordField label={t("field.password")} autoComplete="new-password" required minLength={8}
+          hint={t("register.passwordHint")} showStrength {...field("password")} />
         <ErrorBox message={error} />
-        <button type="submit" disabled={sending}
-          className="w-full rounded-md bg-slate-900 px-4 py-2 font-medium text-white disabled:opacity-50">
+        <Button type="submit" size="lg" loading={sending} className="min-h-11 w-full">
           {sending ? t("register.submitting") : t("register.submit")}
-        </button>
+        </Button>
       </form>
-      <p className="mt-4 text-sm text-slate-600">
-        {t("register.haveAccount")} <Link to="/login" className="text-blue-700 underline">{t("register.loginLink")}</Link>
-      </p>
-    </section>
+    </AuthCard>
   );
 }

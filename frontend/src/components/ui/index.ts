@@ -1,6 +1,7 @@
 export { Badge, type BadgeTone } from "./Badge";
 export { Button, ButtonLink, buttonClasses, type ButtonSize, type ButtonVariant } from "./Button";
 export { Card } from "./Card";
+export { Confetti } from "./Confetti";
 export { ConfirmDialog } from "./ConfirmDialog";
 export { CountUp } from "./CountUp";
 export { DateTimeField } from "./DateTimeField";

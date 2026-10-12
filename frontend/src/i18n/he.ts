@@ -76,6 +76,7 @@ export const he: Record<TranslationKey, string> = {
   "camera.insecure": "המצלמה פועלת רק בדף מאובטח (https או localhost).",
   // --- routes
   "notFound.title": "הדף לא נמצא",
+  "notFound.hint": "הדף שחיפשתם לא קיים או שהועבר.",
   // --- login / register
   "login.title": "התחברות",
   "login.sessionExpired": "פג תוקף החיבור. התחברו שוב.",
@@ -103,6 +104,17 @@ export const he: Record<TranslationKey, string> = {
   "events.haveTicket": "יש לכם כרטיס",
   "events.entered": "נכנסתם",
   "events.viewTicket": "לכרטיס ←",
+  "events.filter.label": "סינון אירועים",
+  "events.filter.all": "הכול",
+  "events.filter.week": "השבוע",
+  "events.filter.free": "חינם",
+  "events.noMatch": "אין אירועים שמתאימים לסינון.",
+  "events.showAll": "להצגת כל האירועים",
+  "events.free": "חינם",
+  "events.timing.LIVE_NOW": "מתקיים עכשיו",
+  "events.timing.TODAY": "היום",
+  "events.timing.THIS_WEEK": "השבוע",
+  "events.timing.ENDED": "הסתיים",
   // --- checkout
   "checkout.confirming": "מאשרים את התשלום…",
   "checkout.confirmingProvider": "מאשרים מול ספק התשלומים…",

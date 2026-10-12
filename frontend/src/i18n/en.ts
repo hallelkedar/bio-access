@@ -75,6 +75,7 @@ export const en = {
   "camera.insecure": "The camera needs a secure page (https or localhost).",
   // --- routes
   "notFound.title": "Not found",
+  "notFound.hint": "The page you're looking for doesn't exist or has moved.",
   // --- login / register
   "login.title": "Log in",
   "login.sessionExpired": "Your session expired. Please log in again.",
@@ -102,6 +103,17 @@ export const en = {
   "events.haveTicket": "You have a ticket",
   "events.entered": "Entered",
   "events.viewTicket": "View ticket →",
+  "events.filter.label": "Filter events",
+  "events.filter.all": "All",
+  "events.filter.week": "This week",
+  "events.filter.free": "Free",
+  "events.noMatch": "No events match this filter.",
+  "events.showAll": "Show all events",
+  "events.free": "Free",
+  "events.timing.LIVE_NOW": "Live now",
+  "events.timing.TODAY": "Today",
+  "events.timing.THIS_WEEK": "This week",
+  "events.timing.ENDED": "Ended",
   // --- checkout
   "checkout.confirming": "Confirming your payment…",
   "checkout.confirmingProvider": "Confirming with the payment provider…",

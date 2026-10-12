@@ -6,7 +6,7 @@ import { AuthProvider, useAuth } from "./auth/AuthContext";
 import { ProtectedRoute } from "./auth/ProtectedRoute";
 import { LanguageToggle } from "./components/LanguageToggle";
 import { LogoMark } from "./components/LogoMark";
-import { RouteTransition, ToastProvider } from "./components/ui";
+import { ButtonLink, Card, RouteTransition, ToastProvider } from "./components/ui";
 import type { TranslationKey } from "./i18n/en";
 import { LanguageProvider, useLanguage } from "./i18n/LanguageProvider";
 import { ADMIN_NAV, AdminLayout } from "./pages/admin/AdminLayout";
@@ -163,11 +163,18 @@ function RootLayout() {
 function NotFound() {
   const { t } = useLanguage();
   return (
-    <section>
-      <h1 className="text-2xl font-bold">{t("notFound.title")}</h1>
-      <p className="mt-2">
-        <Link to="/" className="text-blue-700 underline">{t("common.backHome")}</Link>
-      </p>
+    <section className="flex justify-center py-10">
+      <Card className="flex w-full max-w-md flex-col items-center px-6 py-10 text-center">
+        <svg viewBox="0 0 120 80" className="h-20 w-32 text-brand-500" fill="none" aria-hidden="true">
+          <rect x="10" y="12" width="100" height="56" rx="10" fill="currentColor" opacity="0.08" />
+          <path d="M30 26v14h12M38 26v28" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+          <circle cx="60" cy="40" r="12" stroke="var(--color-accent-500)" strokeWidth="4" />
+          <path d="M80 26v14h12M88 26v28" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+        <h1 className="mt-5 text-2xl font-bold">{t("notFound.title")}</h1>
+        <p className="mt-2 text-muted">{t("notFound.hint")}</p>
+        <ButtonLink to="/" className="mt-6 min-h-11">{t("common.backHome")}</ButtonLink>
+      </Card>
     </section>
   );
 }

@@ -155,7 +155,29 @@ describe("EventsPage", () => {
 
     expect(await summer.findByRole("alert")).toHaveTextContent("Event is sold out");
     expect(summer.getByRole("button", { name: "Buy ticket" })).toBeEnabled();
+    expect(screen.getByLabelText("Notifications")).toHaveTextContent("Event is sold out");
     expect(redirectTo).not.toHaveBeenCalled();
+  });
+
+  it("filter chips narrow the list, and an empty result offers 'show all'", async () => {
+    events.listEvents.mockResolvedValue([makeEvent(), makeEvent({ id: 8, name: "Open Day", price_cents: 0 })]);
+    tickets.myTickets.mockResolvedValue([]);
+    vi.useFakeTimers({ toFake: ["Date"] }); // only the clock: "this week" is relative to now
+    vi.setSystemTime(new Date("2026-10-12T12:00:00Z"));
+    const user = renderPage(<EventsPage />);
+    await card("Summer Concert");
+
+    await user.click(screen.getByRole("button", { name: "Free" }));
+    expect(screen.getByRole("button", { name: "Free" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.queryByRole("heading", { name: "Summer Concert" })).not.toBeInTheDocument();
+    expect((await card("Open Day")).getByText("Free")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "This week" })); // both are in December
+    expect(screen.getByText("No events match this filter.")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Show all events" }));
+    expect(screen.getByRole("heading", { name: "Summer Concert" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Open Day" })).toBeInTheDocument();
+    vi.useRealTimers();
   });
 
   it("empty catalog", async () => {

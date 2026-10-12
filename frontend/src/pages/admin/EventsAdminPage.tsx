@@ -1,13 +1,14 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 
 import { createEvent, deleteEvent, listAllEvents, updateEvent, uploadCover, type EventInput } from "../../api/adminEvents";
+import { getEventStats, type EventStats } from "../../api/adminStats";
 import { apiErrorMessage } from "../../api/errors";
 import type { Event } from "../../api/types";
 import { ErrorBox } from "../../components/ErrorBox";
 import { CityCombobox } from "../../components/CityCombobox";
 import { FormField } from "../../components/FormField";
-import { Spinner } from "../../components/Spinner";
-import { Button, DateTimeField } from "../../components/ui";
+import { Place } from "../../components/Place";
+import { Badge, Button, ConfirmDialog, DateTimeField, EmptyState, Skeleton, SkeletonTable, useToast, type BadgeTone } from "../../components/ui";
 import { formatDateTime, formatPrice, localeFor, parsePriceToCents } from "../../format";
 import type { City } from "../../data/cities";
 import { composeLocation, findCity, splitLocation } from "../../data/cityMatch";
@@ -15,20 +16,30 @@ import { useLanguage } from "../../i18n/LanguageProvider";
 import type { TranslationKey } from "../../i18n/en";
 import type { Lang } from "../../i18n/translate";
 
-const STATUS_STYLE: Record<Event["status"], string> = {
-  DRAFT: "bg-slate-100 text-slate-700",
-  ACTIVE: "bg-emerald-100 text-emerald-800",
-  CLOSED: "bg-slate-200 text-slate-500",
+const STATUS_TONE: Record<Event["status"], BadgeTone> = {
+  DRAFT: "neutral",
+  ACTIVE: "ok",
+  CLOSED: "neutral",
 };
 
 /** `cover`: the event was created but its cover upload failed; the editor offers a retry. */
 type Editing = { mode: "new" } | { mode: "edit"; event: Event; cover?: { file: File; error: string } } | null;
 
+/** A Close or Delete waiting for the admin's OK. */
+type Pending = { kind: "close" | "delete"; event: Event } | null;
+
+/** FSI…PDI isolate a (often Latin) name inside a Hebrew sentence, like <bdi> in a string. */
+const isolate = (text: string) => `⁨${text}⁩`;
+
 export function EventsAdminPage() {
   const [events, setEvents] = useState<Event[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [editing, setEditing] = useState<Editing>(null);
+  const [confirming, setConfirming] = useState<Pending>(null);
+  const [busy, setBusy] = useState<ReadonlySet<number>>(new Set());
+  const [rowErrors, setRowErrors] = useState<Record<number, string>>({});
   const { t, lang } = useLanguage();
+  const toast = useToast();
 
   const load = useCallback(async () => {
     setError(null);
@@ -48,13 +59,62 @@ export function EventsAdminPage() {
     void load();
   }
 
+  const markBusy = (id: number, on: boolean) =>
+    setBusy((set) => {
+      const next = new Set(set);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+
+  /**
+   * Optimistic UI: the list shows the result at once; a failed call puts the event back
+   * where it was and explains why in its row.
+   */
+  async function mutate(event: Event, optimistic: Event | null, call: () => Promise<Event | void>, done: string, errors: Record<number, string> = {}) {
+    const index = events?.findIndex((e) => e.id === event.id) ?? -1;
+    setRowErrors(({ [event.id]: _, ...rest }) => rest);
+    markBusy(event.id, true);
+    setEvents((list) => list && (optimistic ? list.map((e) => (e.id === event.id ? optimistic : e)) : list.filter((e) => e.id !== event.id)));
+    try {
+      const result = await call();
+      if (result) setEvents((list) => list && list.map((e) => (e.id === result.id ? result : e)));
+      toast.success(done);
+    } catch (err) {
+      setEvents((list) => {
+        if (!list) return list;
+        if (optimistic) return list.map((e) => (e.id === event.id ? event : e));
+        const restored = [...list];
+        restored.splice(Math.min(index, restored.length), 0, event);
+        return restored;
+      });
+      setRowErrors((all) => ({ ...all, [event.id]: apiErrorMessage(err, errors, lang) }));
+    } finally {
+      markBusy(event.id, false);
+    }
+  }
+
+  const name = (event: Event) => isolate(event.name);
+  const activate = (event: Event) =>
+    mutate(event, { ...event, status: "ACTIVE" }, () => updateEvent(event.id, { status: "ACTIVE" }),
+      t("aevents.toast.activated", { name: name(event) }), { 503: t("aevents.activateFaceDown") });
+
+  function confirmPending() {
+    if (!confirming) return;
+    const { kind, event } = confirming;
+    setConfirming(null);
+    if (kind === "close") {
+      void mutate(event, { ...event, status: "CLOSED" }, () => updateEvent(event.id, { status: "CLOSED" }), t("aevents.toast.closed", { name: name(event) }));
+    } else {
+      void mutate(event, null, () => deleteEvent(event.id), t("aevents.toast.deleted", { name: name(event) }));
+    }
+  }
+
   return (
     <section className="space-y-6">
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold">{t("aevents.title")}</h1>
-        <button type="button" onClick={() => setEditing({ mode: "new" })} className="rounded-md bg-slate-900 px-4 py-2 text-sm text-white">
-          {t("aevents.new")}
-        </button>
+        <Button onClick={() => setEditing({ mode: "new" })}>{t("aevents.new")}</Button>
       </div>
       {editing && (
         <EventForm
@@ -71,88 +131,188 @@ export function EventsAdminPage() {
         />
       )}
       <ErrorBox message={error} />
-      {!events && !error && <Spinner label={t("aevents.loading")} />}
-      {events && events.length === 0 && <p className="text-slate-600">{t("aevents.empty")}</p>}
+      {!events && !error && <SkeletonTable rows={4} columns={5} />}
+      {events && events.length === 0 && (
+        <EmptyState title={t("aevents.empty")} action={<Button variant="secondary" onClick={() => setEditing({ mode: "new" })}>{t("aevents.new")}</Button>} />
+      )}
       {events && events.length > 0 && (
-        <div className="overflow-x-auto rounded-lg border border-slate-200 bg-white">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50 text-start text-slate-600">
+        // Under `sm` the same rows lay out as stacked cards (CSS only), so nothing scrolls sideways.
+        <div className="rounded-lg border border-slate-200 bg-white max-sm:border-0 max-sm:bg-transparent">
+          <table className="w-full text-start text-sm max-sm:block">
+            <thead className="bg-slate-50 text-slate-600 max-sm:hidden">
               <tr>
+                <th className="w-10 px-2 py-2"><span className="sr-only">{t("aevents.col.details")}</span></th>
                 <th className="px-3 py-2 text-start">{t("aevents.col.name")}</th>
                 <th className="px-3 py-2 text-start">{t("aevents.col.starts")}</th>
                 <th className="px-3 py-2 text-start">{t("aevents.col.status")}</th>
-                <th className="px-3 py-2 text-start">{t("aevents.col.price")}</th>
-                <th className="px-3 py-2 text-start">{t("aevents.col.capacity")}</th>
+                <th className="px-3 py-2 text-end">{t("aevents.col.price")}</th>
+                <th className="px-3 py-2 text-end">{t("aevents.col.capacity")}</th>
                 <th className="px-3 py-2"><span className="sr-only">{t("aevents.col.actions")}</span></th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="max-sm:block max-sm:space-y-3">
               {events.map((event) => (
-                <EventRow key={event.id} event={event} onEdit={() => setEditing({ mode: "edit", event })} onChanged={() => void load()} />
+                <EventRow
+                  key={event.id}
+                  event={event}
+                  busy={busy.has(event.id)}
+                  error={rowErrors[event.id] ?? null}
+                  onEdit={() => setEditing({ mode: "edit", event })}
+                  onActivate={() => void activate(event)}
+                  onClose={() => setConfirming({ kind: "close", event })}
+                  onDelete={() => setConfirming({ kind: "delete", event })}
+                />
               ))}
             </tbody>
           </table>
         </div>
       )}
+      <ConfirmDialog
+        open={confirming !== null}
+        tone={confirming?.kind === "delete" ? "danger" : "default"}
+        title={confirming ? t(confirming.kind === "delete" ? "aevents.confirmDelete.title" : "aevents.confirmClose.title", { name: name(confirming.event) }) : ""}
+        message={confirming && t(confirming.kind === "delete" ? "aevents.confirmDelete.message" : "aevents.confirmClose.message")}
+        confirmLabel={confirming?.kind === "delete" ? t("aevents.confirmDelete.yes") : t("aevents.confirmClose.yes")}
+        cancelLabel={t("aevents.confirm.keep")}
+        onConfirm={confirmPending}
+        onCancel={() => setConfirming(null)}
+      />
     </section>
   );
 }
 
-function EventRow({ event, onEdit, onChanged }: { event: Event; onEdit: () => void; onChanged: () => void }) {
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+/** On small screens each cell becomes a labelled line of a card; `data-label` gives the label. */
+const CELL = "px-3 py-2 max-sm:flex max-sm:items-baseline max-sm:justify-between max-sm:gap-3 max-sm:py-1 max-sm:before:text-xs max-sm:before:text-slate-500 max-sm:before:content-[attr(data-label)]";
+
+interface EventRowProps {
+  event: Event;
+  busy: boolean;
+  error: string | null;
+  onEdit: () => void;
+  onActivate: () => void;
+  onClose: () => void;
+  onDelete: () => void;
+}
+
+function EventRow({ event, busy, error, onEdit, onActivate, onClose, onDelete }: EventRowProps) {
+  const [open, setOpen] = useState(false);
+  const detailsId = useId();
   const { t, lang } = useLanguage();
-
-  async function run(action: () => Promise<unknown>, errors: Record<number, string> = {}) {
-    setBusy(true);
-    setError(null);
-    try {
-      await action();
-      onChanged();
-    } catch (err) {
-      setError(apiErrorMessage(err, errors, lang));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const activate = () =>
-    run(() => updateEvent(event.id, { status: "ACTIVE" }), {
-      503: t("aevents.activateFaceDown"),
-    });
-  const close = () => run(() => updateEvent(event.id, { status: "CLOSED" }));
-  const remove = () => {
-    if (window.confirm(t("aevents.confirmDelete", { name: event.name }))) void run(() => deleteEvent(event.id));
-  };
+  const free = event.price_cents === 0;
 
   return (
-    <tr className="border-t border-slate-100 align-top">
-      <td className="px-3 py-2">
-        <div className="font-medium">{event.name}</div>
-        <div className="text-slate-500">{event.location}</div>
-        <ErrorBox message={error} />
-      </td>
-      <td className="px-3 py-2 whitespace-nowrap">{formatDateTime(event.starts_at, lang)}</td>
-      <td className="px-3 py-2">
-        <span className={`rounded-full px-2 py-0.5 text-xs font-medium ${STATUS_STYLE[event.status]}`}>{t(`aevents.badge.${event.status}`)}</span>
-      </td>
-      <td className="px-3 py-2 whitespace-nowrap">{formatPrice(event.price_cents, event.currency, lang)}</td>
-      <td className="px-3 py-2">{event.capacity}</td>
-      <td className="px-3 py-2">
-        <div className="flex flex-wrap justify-end gap-2" aria-label={t("aevents.actionsFor", { name: event.name })}>
-          <button type="button" onClick={onEdit} disabled={busy} className="rounded border px-2 py-1">{t("aevents.edit")}</button>
-          {event.status === "DRAFT" && (
-            <button type="button" onClick={() => void activate()} disabled={busy} className="rounded border px-2 py-1">{t("aevents.activate")}</button>
-          )}
-          {event.status === "ACTIVE" && (
-            <button type="button" onClick={() => void close()} disabled={busy} className="rounded border px-2 py-1">{t("aevents.close")}</button>
-          )}
-          {event.status === "DRAFT" && (
-            <button type="button" onClick={remove} disabled={busy} className="rounded border border-red-200 px-2 py-1 text-red-700">{t("aevents.delete")}</button>
-          )}
+    <>
+      <tr className={`border-t border-slate-100 align-top transition-colors hover:bg-slate-50/70 max-sm:relative max-sm:block max-sm:rounded-card max-sm:border max-sm:border-slate-200 max-sm:bg-white max-sm:p-2 max-sm:shadow-card ${open ? "bg-slate-50/70" : ""}`}>
+        <td className="px-2 py-2 max-sm:absolute max-sm:end-2 max-sm:top-2 max-sm:p-0">
+          <button type="button" onClick={() => setOpen((o) => !o)} aria-expanded={open} aria-controls={detailsId}
+            aria-label={t("aevents.details", { name: event.name })}
+            className="grid h-8 w-8 place-items-center rounded-md text-slate-500 hover:bg-slate-100 hover:text-slate-800 focus-visible:outline-2 focus-visible:outline-brand-500 max-sm:h-11 max-sm:w-11">
+            <svg viewBox="0 0 20 20" className={`h-4 w-4 transition-transform rtl:-scale-x-100 ${open ? "rotate-90 rtl:-rotate-90" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+              <path d="M8 5l5 5-5 5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </button>
+        </td>
+        <td className="px-3 py-2 max-sm:block max-sm:pe-12">
+          <div className="font-medium"><bdi>{event.name}</bdi></div>
+          <Place location={event.location} className="text-slate-500" />
+          <ErrorBox message={error} />
+        </td>
+        <td className={`${CELL} whitespace-nowrap`} data-label={t("aevents.col.starts")}>{formatDateTime(event.starts_at, lang)}</td>
+        <td className={CELL} data-label={t("aevents.col.status")}>
+          <Badge tone={STATUS_TONE[event.status]} className={event.status === "CLOSED" ? "opacity-70" : ""}>
+            {event.status === "ACTIVE" && <span className="h-1.5 w-1.5 rounded-full bg-ok-500" aria-hidden="true" />}
+            {t(`aevents.badge.${event.status}`)}
+          </Badge>
+        </td>
+        <td className={`${CELL} whitespace-nowrap text-end tabular-nums`} data-label={t("aevents.col.price")}>
+          {free ? <span className="font-medium text-ok-700">{t("aevents.free")}</span> : formatPrice(event.price_cents, event.currency, lang)}
+        </td>
+        <td className={`${CELL} text-end tabular-nums`} data-label={t("aevents.col.capacity")}>{new Intl.NumberFormat(localeFor(lang)).format(event.capacity)}</td>
+        <td className="px-3 py-2 max-sm:block max-sm:pt-2">
+          <div className="flex flex-nowrap justify-end gap-2 max-sm:justify-start" aria-label={t("aevents.actionsFor", { name: event.name })}>
+            <Button variant="secondary" size="sm" onClick={onEdit} disabled={busy} className="max-sm:min-h-11">{t("aevents.edit")}</Button>
+            {event.status === "DRAFT" && (
+              <Button variant="secondary" size="sm" onClick={onActivate} disabled={busy} className="max-sm:min-h-11">{t("aevents.activate")}</Button>
+            )}
+            {event.status === "ACTIVE" && (
+              <Button variant="secondary" size="sm" onClick={onClose} disabled={busy} className="max-sm:min-h-11">{t("aevents.close")}</Button>
+            )}
+            {event.status === "DRAFT" && (
+              <Button variant="ghost" size="sm" onClick={onDelete} disabled={busy} className="text-deny-700! hover:bg-deny-50 max-sm:min-h-11">{t("aevents.delete")}</Button>
+            )}
+          </div>
+        </td>
+      </tr>
+      {open && (
+        <tr id={detailsId} className="max-sm:-mt-3 max-sm:block">
+          <td colSpan={7} className="border-t border-slate-100 bg-slate-50/70 px-4 py-4 max-sm:block max-sm:rounded-b-card max-sm:border max-sm:border-t-0 max-sm:border-slate-200">
+            <EventDetails event={event} />
+          </td>
+        </tr>
+      )}
+    </>
+  );
+}
+
+type StatsState = { kind: "loading" } | { kind: "ok"; stats: EventStats } | { kind: "error" };
+
+/** The expanded row: cover, full dates, place, and how many tickets are sold (fetched on open). */
+function EventDetails({ event }: { event: Event }) {
+  const [state, setState] = useState<StatsState>({ kind: "loading" });
+  const { t, lang } = useLanguage();
+  const number = new Intl.NumberFormat(localeFor(lang));
+
+  useEffect(() => {
+    let live = true;
+    getEventStats(event.id).then(
+      (stats) => live && setState({ kind: "ok", stats }),
+      () => live && setState({ kind: "error" }),
+    );
+    return () => {
+      live = false;
+    };
+  }, [event.id]);
+
+  const occupancy = state.kind === "ok" ? state.stats.occupancy : null;
+  const pct = (n: number) => (event.capacity > 0 ? `${Math.min(100, (n / event.capacity) * 100)}%` : "0%");
+  return (
+    <div className="grid animate-fade-in gap-4 sm:grid-cols-[12rem_1fr]">
+      {event.cover_image_url ? (
+        <img src={event.cover_image_url} alt={t("aevents.coverPreview")} className="aspect-[2/1] w-full rounded-lg object-cover" />
+      ) : (
+        <div className="grid aspect-[2/1] w-full place-items-center rounded-lg border border-dashed border-slate-300 text-xs text-slate-500">{t("aevents.detail.noCover")}</div>
+      )}
+      <dl className="grid gap-x-6 gap-y-2 text-sm sm:grid-cols-2">
+        <div>
+          <dt className="text-xs text-slate-500">{t("aevents.detail.when")}</dt>
+          <dd className="tabular-nums">{formatDateTime(event.starts_at, lang)} – {formatDateTime(event.ends_at, lang)}</dd>
         </div>
-      </td>
-    </tr>
+        <div>
+          <dt className="text-xs text-slate-500">{t("aevents.detail.where")}</dt>
+          <dd><Place location={event.location} /></dd>
+        </div>
+        <div className="sm:col-span-2">
+          <dt className="text-xs text-slate-500">{t("aevents.detail.tickets")}</dt>
+          <dd aria-live="polite">
+            {state.kind === "loading" && <Skeleton className="mt-1 h-4 w-48" />}
+            {state.kind === "error" && <span className="text-deny-700">{t("aevents.detail.statsFailed")}</span>}
+            {occupancy && (
+              <div className="max-w-md">
+                <div className="flex items-baseline justify-between tabular-nums">
+                  <span className="font-medium">{t("aevents.detail.sold", { sold: number.format(occupancy.sold), capacity: number.format(event.capacity) })}</span>
+                  <span className="text-xs text-slate-500">{t("aevents.detail.entered", { entered: number.format(occupancy.entered) })}</span>
+                </div>
+                <div role="meter" aria-label={t("aevents.detail.tickets")} aria-valuemin={0} aria-valuemax={event.capacity} aria-valuenow={occupancy.sold}
+                  className="relative mt-1.5 h-2 overflow-hidden rounded-full bg-slate-200">
+                  <div className="absolute inset-y-0 start-0 rounded-full bg-brand-300 transition-[width] duration-500" style={{ width: pct(occupancy.sold) }} />
+                  <div className="absolute inset-y-0 start-0 rounded-full bg-brand-600 transition-[width] duration-500" style={{ width: pct(occupancy.entered) }} />
+                </div>
+              </div>
+            )}
+          </dd>
+        </div>
+      </dl>
+    </div>
   );
 }
 

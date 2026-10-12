@@ -4,6 +4,8 @@ import { createMemoryRouter, RouterProvider } from "react-router";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import * as adminApi from "../../api/adminEvents";
+import * as statsApi from "../../api/adminStats";
+import { ToastProvider } from "../../components/ui";
 import { fromLocalInput } from "../../format";
 import { httpError } from "../../test/factories";
 import { makeEvent } from "../../test/factories.events";
@@ -11,7 +13,9 @@ import { AdminLayout } from "./AdminLayout";
 import { eventDateProblems, EventsAdminPage, START_GRACE_MS } from "./EventsAdminPage";
 
 vi.mock("../../api/adminEvents");
+vi.mock("../../api/adminStats");
 const admin = vi.mocked(adminApi);
+const stats = vi.mocked(statsApi);
 
 const DRAFT = makeEvent({ id: 1, name: "Draft Party", status: "DRAFT" });
 const ACTIVE = makeEvent({ id: 2, name: "Live Show", status: "ACTIVE" });
@@ -34,7 +38,7 @@ function renderAdmin(path = "/admin/events") {
     [{ path: "/admin", element: <AdminLayout />, children: [{ path: "events", element: <EventsAdminPage /> }] }],
     { initialEntries: [path] },
   );
-  render(<RouterProvider router={router} />);
+  render(<ToastProvider><RouterProvider router={router} /></ToastProvider>); // as in App.tsx
   return userEvent.setup();
 }
 
@@ -127,18 +131,99 @@ describe("EventsAdminPage", () => {
     expect(await draft.findByRole("alert")).toHaveTextContent("face service is unavailable");
   });
 
-  it("delete asks first", async () => {
-    const confirm = vi.spyOn(window, "confirm").mockReturnValueOnce(false).mockReturnValueOnce(true);
+  it("delete asks in a dialog first, then removes the row and says so", async () => {
     admin.deleteEvent.mockResolvedValue();
     const user = renderAdmin();
     const draft = await row("Draft Party");
 
     await user.click(draft.getByRole("button", { name: "Delete" }));
+    const dialog = screen.getByRole("dialog", { name: /Delete .*Draft Party/ });
+    expect(dialog).toHaveTextContent("can't be undone");
+    await user.click(within(dialog).getByRole("button", { name: "Keep it" }));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
     expect(admin.deleteEvent).not.toHaveBeenCalled();
 
     await user.click(draft.getByRole("button", { name: "Delete" }));
-    await waitFor(() => expect(admin.deleteEvent).toHaveBeenCalledWith(1));
-    expect(confirm).toHaveBeenCalledWith(expect.stringContaining("Draft Party"));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete event" }));
+
+    expect(admin.deleteEvent).toHaveBeenCalledWith(1);
+    await waitFor(() => expect(screen.queryByText("Draft Party")).not.toBeInTheDocument());
+    expect(await screen.findByText(/Draft Party.*was deleted/)).toBeInTheDocument();
+  });
+
+  it("close asks first, shows CLOSED at once and confirms with a toast", async () => {
+    let finish!: (event: typeof ACTIVE) => void;
+    admin.updateEvent.mockReturnValue(new Promise((resolve) => { finish = resolve; }));
+    const user = renderAdmin();
+    const live = await row("Live Show");
+
+    await user.click(live.getByRole("button", { name: "Close" }));
+    const dialog = screen.getByRole("dialog", { name: /Close .*Live Show/ });
+    expect(dialog).toHaveTextContent("stop letting people in");
+    await user.click(within(dialog).getByRole("button", { name: "Close event" }));
+
+    expect(admin.updateEvent).toHaveBeenCalledWith(2, { status: "CLOSED" });
+    expect(live.getByText("CLOSED")).toBeInTheDocument(); // before the server answers
+    finish({ ...ACTIVE, status: "CLOSED" });
+    expect(await screen.findByText(/Live Show.*is closed/)).toBeInTheDocument();
+  });
+
+  it("puts a deleted row back with the reason when the server refuses", async () => {
+    admin.deleteEvent.mockRejectedValue(httpError(409, "event has tickets"));
+    const user = renderAdmin();
+
+    await user.click((await row("Draft Party")).getByRole("button", { name: "Delete" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete event" }));
+
+    const restored = await row("Draft Party");
+    expect(await restored.findByRole("alert")).toBeInTheDocument();
+    const names = screen.getAllByRole("row").slice(1).map((r) => r.textContent);
+    expect(names[0]).toContain("Draft Party"); // back in its old place
+  });
+
+  it("rolls an activated row back to DRAFT when activation fails", async () => {
+    admin.updateEvent.mockRejectedValue(httpError(503, "face service unavailable, try again"));
+    const user = renderAdmin();
+    const draft = await row("Draft Party");
+
+    await user.click(draft.getByRole("button", { name: "Activate" }));
+
+    expect(await draft.findByRole("alert")).toBeInTheDocument();
+    expect(draft.getByText("DRAFT")).toBeInTheDocument();
+    expect(draft.getByRole("button", { name: "Activate" })).toBeEnabled();
+  });
+
+  it("shows Free for a free event and right-aligned numbers", async () => {
+    admin.listAllEvents.mockResolvedValue([makeEvent({ id: 4, name: "Open Day", price_cents: 0, capacity: 1200 })]);
+    renderAdmin();
+    const open = await row("Open Day");
+
+    expect(open.getByText("Free")).toHaveClass("text-ok-700");
+    expect(open.queryByText(/₪/)).not.toBeInTheDocument();
+    expect(open.getByText("1,200")).toHaveClass("tabular-nums", "text-end");
+  });
+
+  it("expands a row to show its dates and sold / capacity", async () => {
+    stats.getEventStats.mockResolvedValue({
+      event_id: 2,
+      entries_per_30_min: [],
+      decisions: { approved: 3, denied: 0, denied_by_reason: {}, approved_by_method: {} },
+      occupancy: { entered: 3, sold: 40, capacity: 100, percent: 3 },
+    });
+    const user = renderAdmin();
+    const toggle = (await row("Live Show")).getByRole("button", { name: "Details for Live Show" });
+    expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+    await user.click(toggle);
+
+    expect(toggle).toHaveAttribute("aria-expanded", "true");
+    expect(stats.getEventStats).toHaveBeenCalledWith(2);
+    expect(await screen.findByText("40 of 100 sold")).toBeInTheDocument();
+    expect(screen.getByText("3 entered")).toBeInTheDocument();
+    expect(screen.getByRole("meter", { name: "Tickets" })).toHaveAttribute("aria-valuenow", "40");
+
+    await user.click(toggle);
+    expect(screen.queryByText("40 of 100 sold")).not.toBeInTheDocument();
   });
 
   it("uploads a cover and explains a rejected file", async () => {

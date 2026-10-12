@@ -215,6 +215,11 @@
   input:not(:disabled)::file-selector-button {
     cursor: pointer;
   }
+  /* Full-bleed sections (mx-[calc(50%-50vw)]) count the vertical scrollbar in 100vw; clip
+     (not hidden) trims that sliver without making body a scroll container, so sticky still works. */
+  body {
+    overflow-x: clip;
+  }
 }
 
 /* --- Language switch: cross-fade into the mirrored layout (LanguageProvider.setLang) ------- */

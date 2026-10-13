@@ -80,6 +80,54 @@ def test_delete_collection_access_denied(stubbed: tuple[RekognitionFaceProvider,
         provider.delete_collection(7)
 
 
+FACE_ID = "11111111-2222-3333-4444-555555555555"
+DELETE_FACE_PARAMS = {"CollectionId": "bioaccess-event-7", "FaceIds": [FACE_ID]}
+
+
+def test_delete_face(stubbed: tuple[RekognitionFaceProvider, Stubber]) -> None:
+    provider, stubber = stubbed
+    stubber.add_response("delete_faces", {"DeletedFaces": [FACE_ID]}, DELETE_FACE_PARAMS)
+
+    provider.delete_face(7, FACE_ID)
+
+
+@pytest.mark.parametrize("missing", ["face", "collection"])
+def test_delete_face_already_gone_is_ok(stubbed: tuple[RekognitionFaceProvider, Stubber], missing: str) -> None:
+    provider, stubber = stubbed
+    if missing == "face":
+        stubber.add_response(
+            "delete_faces",
+            {"UnsuccessfulFaceDeletions": [{"FaceId": FACE_ID, "Reasons": ["FACE_NOT_FOUND"]}]},
+            DELETE_FACE_PARAMS,
+        )
+    else:
+        stubber.add_client_error("delete_faces", service_error_code="ResourceNotFoundException")
+
+    provider.delete_face(7, FACE_ID)
+
+
+def test_delete_face_refused_by_aws(stubbed: tuple[RekognitionFaceProvider, Stubber]) -> None:
+    provider, stubber = stubbed
+    stubber.add_response(
+        "delete_faces",
+        {
+            "UnsuccessfulFaceDeletions": [{"FaceId": FACE_ID, "Reasons": ["ASSOCIATED_TO_AN_EXISTING_USER"]}],
+        },
+        DELETE_FACE_PARAMS,
+    )
+
+    with pytest.raises(FaceProviderError, match="ASSOCIATED_TO_AN_EXISTING_USER"):
+        provider.delete_face(7, FACE_ID)
+
+
+def test_delete_face_access_denied(stubbed: tuple[RekognitionFaceProvider, Stubber]) -> None:
+    provider, stubber = stubbed
+    stubber.add_client_error("delete_faces", service_error_code="AccessDeniedException")
+
+    with pytest.raises(FaceProviderError, match="AccessDeniedException"):
+        provider.delete_face(7, FACE_ID)
+
+
 def test_network_error_becomes_provider_error() -> None:
     from botocore.exceptions import EndpointConnectionError
 

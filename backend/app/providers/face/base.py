@@ -31,7 +31,7 @@ class QualityResult:
 class FaceMatch:
     ticket_id: int
     face_id: str
-    similarity: float  # 0-100
+    similarity: float | None  # 0-100; None when the provider doesn't measure it (demo)
 
 
 class FaceProviderError(Exception):

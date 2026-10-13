@@ -161,8 +161,9 @@ If there is time, add: creating an event (calendar date picker, city autocomplet
 closing an event in the admin tab while **My tickets** is open in another, the card turns to
 "Event closed".
 
-Covers uploaded through `npm run dev` are stored as `http://localhost:8000/media/…` and do not load
-in the Docker stack (mixed content + CSP); upload covers through the stack you present on.
+Cover links are relative (`/media/…`), but the files live in `backend/media` in development and in
+the `media` volume in Docker. To show covers uploaded in development on the Docker stack, copy them
+in: `docker compose cp backend/media/. backend:/app/media/`.
 
 ## UI
 

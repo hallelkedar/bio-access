@@ -71,10 +71,10 @@ def test_search_returns_latest_enrolled_ticket(provider: DemoFaceProvider) -> No
     match = provider.search(1, _photo(), threshold=95)  # any frame: this is a demo
 
     assert match is not None
-    assert (match.ticket_id, match.face_id, match.similarity) == (11, latest, 99.0)
+    assert (match.ticket_id, match.face_id, match.similarity) == (11, latest, None)  # no made-up score
 
 
-def test_threshold_above_demo_similarity_means_no_match(provider: DemoFaceProvider) -> None:
+def test_threshold_above_demo_match_score_means_no_match(provider: DemoFaceProvider) -> None:
     provider.enroll(1, ticket_id=10, image=_photo())
 
     assert provider.search(1, _photo(), threshold=99.5) is None

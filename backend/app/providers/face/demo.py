@@ -3,7 +3,9 @@
 - check_quality: simple pixel checks (darkness, blur, size) plus a face count with OpenCV's
   bundled frontal-face detector: no face or several faces are rejected.
 - search: a frame without a face is not recognized; otherwise it returns the most recently
-  enrolled ticket of the event (similarity 99.0). It still can't tell people apart.
+  enrolled ticket of the event. It still can't tell people apart, so it reports no similarity
+  (logs and dashboard show "—"); only a threshold above DEMO_MATCH_SCORE stops it matching,
+  so the admin's threshold setting still has a visible effect.
 - The face count can be turned off (DEMO_FACE_CHECK=false) if a dim room makes the
   detector miss faces during a live demo.
 - State (event -> enrolled face ids and ticket ids) is kept in a small JSON file so it
@@ -34,7 +36,7 @@ from app.utils.image_validation import InvalidImageError
 
 logger = logging.getLogger(__name__)
 
-DEMO_SIMILARITY = 99.0
+DEMO_MATCH_SCORE = 99.0  # compared with the threshold only; never reported as a similarity
 MIN_SIDE_PX = 120
 MIN_BRIGHTNESS = 50.0  # mean gray level, 0-255
 MIN_EDGE_DETAIL = 3.0  # spread of edge strength; flat or very blurry images score ~0-2
@@ -142,12 +144,12 @@ class DemoFaceProvider(FaceProvider):
         with self._lock:
             # Events activated before switching to demo have no entry yet: nobody enrolled.
             faces = self._load().get(collection_id_for(event_id), [])
-        if not faces or DEMO_SIMILARITY < threshold:
+        if not faces or DEMO_MATCH_SCORE < threshold:
             return None
         if not self._has_face(image):  # nobody in front of the camera: nobody gets in
             return None
         latest = faces[-1]  # demo rule: whoever enrolled last for this event
-        return FaceMatch(ticket_id=int(str(latest["ticket_id"])), face_id=str(latest["face_id"]), similarity=DEMO_SIMILARITY)
+        return FaceMatch(ticket_id=int(str(latest["ticket_id"])), face_id=str(latest["face_id"]), similarity=None)
 
     def delete_face(self, event_id: int, face_id: str) -> None:
         with self._lock:

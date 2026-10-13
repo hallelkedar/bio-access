@@ -163,7 +163,13 @@ closing an event in the admin tab while **My tickets** is open in another, the c
 
 Cover links are relative (`/media/…`), but the files live in `backend/media` in development and in
 the `media` volume in Docker. To show covers uploaded in development on the Docker stack, copy them
-in: `docker compose cp backend/media/. backend:/app/media/`.
+in, then give them back to the backend's user (it runs as `bioaccess`, not root, and must be able
+to write there):
+
+```bash
+docker compose cp backend/media/. backend:/app/media/
+docker compose exec -u root backend chown -R bioaccess:bioaccess /app/media
+```
 
 ## UI
 

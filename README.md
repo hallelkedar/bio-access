@@ -19,7 +19,7 @@ while admins watch entries live.
 |---|---|
 | **Visitor** | Register and log in · browse active events · buy a ticket (Stripe Checkout) · confirmation email with QR (+ SMS) · My tickets with QR · **face enrollment** with explicit consent, guided capture and quality tips |
 | **Gatekeeper** | Gate terminal: pick event + gate · camera scans only when someone steps in · big green/red result with sound · QR fallback (USB scanners work) |
-| **Admin** | Live dashboard over WebSocket (entries feed, KPIs, occupancy, entries per 30 min, denials by reason) · events (create, activate, close, cover upload) · audit logs with filters · users and role changes · face-match threshold |
+| **Admin** | Live dashboard over WebSocket (entries feed, KPIs, occupancy, entries per 30 min, denials by reason) · events (create, activate, close, cover upload, delete face data after the event) · audit logs with filters · users and role changes · face-match threshold |
 
 The core rule: a face is bound to **one ticket** for **one event**. At the gate the face *is* the
 ticket: the face provider returns which ticket it belongs to, and the backend admits that ticket
@@ -107,7 +107,7 @@ sync with the code). Provider modes:
 
 | Service | `.env` | Modes | Needs |
 |---|---|---|---|
-| Face recognition | `FACE_PROVIDER` | `fake` (tests: identical bytes only) · `demo` (webcam demos, **not** real recognition) · `rekognition` | AWS keys (IAM user limited to Rekognition) |
+| Face recognition | `FACE_PROVIDER` | `fake` (tests: identical bytes only) · `demo` (webcam demos, **not** real recognition) · `rekognition` | AWS keys (IAM user limited to Rekognition: `CreateCollection`, `DetectFaces`, `IndexFaces`, `SearchFacesByImage`, `DeleteFaces`, `DeleteCollection`) |
 | Payments | `PAYMENT_PROVIDER` | `fake` · `stripe` | Stripe test keys; locally `stripe listen` (below) |
 | Email | `EMAIL_PROVIDER` | `console` · `resend` | Resend API key |
 | SMS | `SMS_PROVIDER` | `console` · `twilio` | Twilio trial account |
@@ -134,6 +134,8 @@ With `FACE_PROVIDER=demo` (no AWS needed), three browser windows:
    **green "Welcome!" + name**; step in again: **red "Already entered"**. Try **QR fallback** too.
 4. **Admin:** both scans appear instantly in the live feed; KPIs, occupancy and charts update.
    Logs shows every attempt; Settings changes the match threshold for the next scan.
+5. **Admin:** Events → **Close** the event → **Delete face data**: the toast says how many faces were
+   deleted from the face provider and from the database.
 
 The demo provider "recognizes" the most recently enrolled ticket of the event; it shows the flow,
 not real recognition. With `FACE_PROVIDER=rekognition` the same steps use AWS Rekognition.
@@ -212,6 +214,10 @@ whatever `.env` says.
   gate checks), go to the face provider over TLS, and are dropped. The database stores only the
   provider's `face_id`, linked to one ticket, with the consent timestamp.
 - Face vectors live in the provider's per-event collection; they are *not designed to be reversible*.
+- **Faces are deleted after the event:** once an event is closed or over, an admin clicks **Delete
+  face data** (`POST /api/admin/events/{id}/purge-biometrics`). The provider's collection goes
+  first, then our `face_id` references; if the provider fails nothing is touched, and repeating
+  is safe. Changing a face photo also deletes the old face from the provider.
 - **Explicit consent** before the camera even starts; QR entry is always available instead.
 - Passwords: bcrypt. Auth: short-lived JWT; the role is read from the database on every request.
 - Uploads: size caps before reading, real image decoding, decompression-bomb guard, and re-encoding
@@ -229,8 +235,6 @@ Spec §12 scenarios, one test each: [`backend/tests/security/test_spec_cases.py`
 
 - **No liveness check** (BUILD_PLAN 6.7): a photo of an enrolled person would be accepted.
   Documented as an expected failure (`test_case_02`).
-- **Biometric deletion after the event is not built yet** (BUILD_PLAN 6.8). Until then, faces stay
-  in the provider's collection after the event.
 - **`FACE_PROVIDER=demo` is not face recognition**; it exists only to demonstrate the flow.
 - The WebSocket feed and rate limits are **per server process**; several servers would need a shared
   broker (e.g. Redis).

@@ -37,3 +37,14 @@ export async function uploadCover(id: number, file: File): Promise<Event> {
   const { data } = await api.post<Event>(`/api/events/${id}/cover`, form);
   return data;
 }
+
+export interface BiometricPurge {
+  event_id: number;
+  deleted_profiles: number;
+}
+
+/** Delete every face of a CLOSED or finished event (provider collection + references). Safe to repeat. */
+export async function purgeBiometrics(id: number): Promise<BiometricPurge> {
+  const { data } = await api.post<BiometricPurge>(`/api/admin/events/${id}/purge-biometrics`);
+  return data;
+}

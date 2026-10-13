@@ -6,10 +6,12 @@ from sqlalchemy.orm import Session
 from app.core.deps import require_role
 from app.db.session import get_db
 from app.models.user import User, UserRole
-from app.schemas.admin import AccessLogFilters, AccessLogPage, EventStats, RoleUpdate, SettingsRead, SettingsUpdate, UserFilters, UserPage
+from app.providers.face import get_face_provider
+from app.providers.face.base import FaceProvider, FaceProviderError
+from app.schemas.admin import AccessLogFilters, AccessLogPage, BiometricPurgeRead, EventStats, RoleUpdate, SettingsRead, SettingsUpdate, UserFilters, UserPage
 from app.schemas.event import EventRead
 from app.schemas.user import UserRead
-from app.services import admin_logs, admin_users, analytics
+from app.services import admin_logs, admin_users, analytics, biometrics
 from app.services import event as event_service
 from app.services import settings as settings_service
 from app.services.event import EventNotFoundError
@@ -65,6 +67,27 @@ def list_users(
 @router.get("/events", response_model=list[EventRead])
 def list_all_events(db: Session = Depends(get_db), _: User = Depends(require_admin)) -> list[EventRead]:
     return [EventRead.model_validate(event) for event in event_service.list_all_events(db)]
+
+
+@router.post("/events/{event_id}/purge-biometrics", response_model=BiometricPurgeRead)
+def purge_biometrics(
+    event_id: int,
+    db: Session = Depends(get_db),
+    admin: User = Depends(require_admin),
+    face_provider: FaceProvider = Depends(get_face_provider),
+) -> BiometricPurgeRead:
+    try:
+        return biometrics.purge_event_biometrics(db, face_provider, event_id, admin)
+    except EventNotFoundError:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="event not found")
+    except biometrics.EventStillOpenError:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT, detail="close the event (or wait until it ends) first"
+        )
+    except FaceProviderError:
+        raise HTTPException(
+            status_code=status.HTTP_503_SERVICE_UNAVAILABLE, detail="face service unavailable, try again"
+        )
 
 
 @router.patch("/users/{user_id}/role", response_model=UserRead)

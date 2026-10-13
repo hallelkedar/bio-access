@@ -1,7 +1,8 @@
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session
 
 from app.models.biometric_profile import BiometricProfile
+from app.models.ticket import Ticket
 
 
 def get_by_ticket_id(db: Session, ticket_id: int) -> BiometricProfile | None:
@@ -26,3 +27,10 @@ def enrolled_ticket_ids(db: Session, ticket_ids: list[int]) -> set[int]:
         return set()
     query = select(BiometricProfile.ticket_id).where(BiometricProfile.ticket_id.in_(ticket_ids))
     return set(db.scalars(query))
+
+
+def delete_for_event(db: Session, event_id: int) -> int:
+    """Delete the face references of every ticket of the event; returns how many rows went."""
+    event_tickets = select(Ticket.id).where(Ticket.event_id == event_id)
+    result = db.execute(delete(BiometricProfile).where(BiometricProfile.ticket_id.in_(event_tickets)))
+    return int(result.rowcount or 0)

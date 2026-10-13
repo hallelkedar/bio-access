@@ -19,4 +19,4 @@ def get_storage() -> StorageService:
             settings.aws_access_key_id,
             settings.aws_secret_access_key,
         )
-    return LocalStorage(settings.local_media_dir, settings.api_public_url)
+    return LocalStorage(settings.local_media_dir)

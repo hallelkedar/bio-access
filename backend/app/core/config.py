@@ -52,7 +52,6 @@ class Settings(BaseSettings):
     # Storage
     storage_provider: Literal["local", "s3"] = "local"
     local_media_dir: Path = Path(__file__).resolve().parents[2] / "media"  # backend/media
-    api_public_url: str = "http://localhost:8000"  # base of /media URLs for local storage
     s3_bucket: str | None = None
 
     @property

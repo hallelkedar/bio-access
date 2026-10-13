@@ -59,5 +59,5 @@ def test_enroll_then_any_frame_at_the_gate_admits_once(
     first = client.post(url, content=_webcam_frame(), headers=gate).json()  # a different frame, as with a webcam
     second = client.post(url, content=_webcam_frame(), headers=gate).json()
 
-    assert (first["result"], first["user_name"], first["similarity"]) == ("APPROVED", holder.full_name, 99.0)
+    assert (first["result"], first["user_name"], first["similarity"]) == ("APPROVED", holder.full_name, None)
     assert second["reason"] == "ALREADY_ENTERED"

@@ -83,6 +83,11 @@ class SettingsRead(BaseModel):
     source: Literal["database", "default"]
 
 
+class BiometricPurgeRead(BaseModel):
+    event_id: int
+    deleted_profiles: int
+
+
 class UserFilters(BaseModel):
     """Query parameters of GET /api/admin/users (all optional)."""
 

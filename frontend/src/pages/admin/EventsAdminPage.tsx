@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useId, useRef, useState, type FormEvent } from "react";
 
-import { createEvent, deleteEvent, listAllEvents, updateEvent, uploadCover, type EventInput } from "../../api/adminEvents";
+import { createEvent, deleteEvent, listAllEvents, purgeBiometrics, updateEvent, uploadCover, type EventInput } from "../../api/adminEvents";
 import { getEventStats, type EventStats } from "../../api/adminStats";
 import { apiErrorMessage } from "../../api/errors";
 import type { Event } from "../../api/types";
@@ -27,7 +27,16 @@ const STATUS_TONE: Record<Event["status"], BadgeTone> = {
 type Editing = { mode: "new" } | { mode: "edit"; event: Event; cover?: { file: File; error: string } } | null;
 
 /** A Close or Delete waiting for the admin's OK. */
-type Pending = { kind: "close" | "delete"; event: Event } | null;
+type Pending = { kind: "close" | "delete" | "purge"; event: Event } | null;
+
+const CONFIRM_TEXT = {
+  close: { title: "aevents.confirmClose.title", message: "aevents.confirmClose.message", yes: "aevents.confirmClose.yes" },
+  delete: { title: "aevents.confirmDelete.title", message: "aevents.confirmDelete.message", yes: "aevents.confirmDelete.yes" },
+  purge: { title: "aevents.confirmPurge.title", message: "aevents.confirmPurge.message", yes: "aevents.confirmPurge.yes" },
+} as const satisfies Record<NonNullable<Pending>["kind"], Record<string, TranslationKey>>;
+
+/** Faces are only needed at the gate: once an event is closed or over, they can go. */
+const canPurge = (event: Event) => event.status === "CLOSED" || new Date(event.ends_at).getTime() <= Date.now();
 
 /** FSI…PDI isolate a (often Latin) name inside a Hebrew sentence, like <bdi> in a string. */
 const isolate = (text: string) => `⁨${text}⁩`;
@@ -100,11 +109,28 @@ export function EventsAdminPage() {
     mutate(event, { ...event, status: "ACTIVE" }, () => updateEvent(event.id, { status: "ACTIVE" }),
       t("aevents.toast.activated", { name: name(event) }), { 503: t("aevents.activateFaceDown") });
 
+  /** Not optimistic: the event itself doesn't change, only its faces go. The toast says how many. */
+  async function purge(event: Event) {
+    setRowErrors(({ [event.id]: _, ...rest }) => rest);
+    markBusy(event.id, true);
+    try {
+      const { deleted_profiles: count } = await purgeBiometrics(event.id);
+      toast.success(count === 0 ? t("aevents.toast.purgedNone", { name: name(event) })
+        : t(count === 1 ? "aevents.toast.purged.one" : "aevents.toast.purged.other", { name: name(event), count: new Intl.NumberFormat(localeFor(lang)).format(count) }));
+    } catch (err) {
+      setRowErrors((all) => ({ ...all, [event.id]: apiErrorMessage(err, { 409: t("aevents.purgeStillOpen"), 503: t("aevents.purgeFaceDown") }, lang) }));
+    } finally {
+      markBusy(event.id, false);
+    }
+  }
+
   function confirmPending() {
     if (!confirming) return;
     const { kind, event } = confirming;
     setConfirming(null);
-    if (kind === "close") {
+    if (kind === "purge") {
+      void purge(event);
+    } else if (kind === "close") {
       void mutate(event, { ...event, status: "CLOSED" }, () => updateEvent(event.id, { status: "CLOSED" }), t("aevents.toast.closed", { name: name(event) }));
     } else {
       void mutate(event, null, () => deleteEvent(event.id), t("aevents.toast.deleted", { name: name(event) }));
@@ -162,6 +188,7 @@ export function EventsAdminPage() {
                   onActivate={() => void activate(event)}
                   onClose={() => setConfirming({ kind: "close", event })}
                   onDelete={() => setConfirming({ kind: "delete", event })}
+                  onPurge={() => setConfirming({ kind: "purge", event })}
                 />
               ))}
             </tbody>
@@ -170,10 +197,10 @@ export function EventsAdminPage() {
       )}
       <ConfirmDialog
         open={confirming !== null}
-        tone={confirming?.kind === "delete" ? "danger" : "default"}
-        title={confirming ? t(confirming.kind === "delete" ? "aevents.confirmDelete.title" : "aevents.confirmClose.title", { name: name(confirming.event) }) : ""}
-        message={confirming && t(confirming.kind === "delete" ? "aevents.confirmDelete.message" : "aevents.confirmClose.message")}
-        confirmLabel={confirming?.kind === "delete" ? t("aevents.confirmDelete.yes") : t("aevents.confirmClose.yes")}
+        tone={confirming?.kind === "close" ? "default" : "danger"}
+        title={confirming ? t(CONFIRM_TEXT[confirming.kind].title, { name: name(confirming.event) }) : ""}
+        message={confirming && t(CONFIRM_TEXT[confirming.kind].message)}
+        confirmLabel={confirming ? t(CONFIRM_TEXT[confirming.kind].yes) : ""}
         cancelLabel={t("aevents.confirm.keep")}
         onConfirm={confirmPending}
         onCancel={() => setConfirming(null)}
@@ -190,9 +217,10 @@ interface EventRowProps {
   onActivate: () => void;
   onClose: () => void;
   onDelete: () => void;
+  onPurge: () => void;
 }
 
-function EventRow({ event, busy, error, onEdit, onActivate, onClose, onDelete }: EventRowProps) {
+function EventRow({ event, busy, error, onEdit, onActivate, onClose, onDelete, onPurge }: EventRowProps) {
   const [open, setOpen] = useState(false);
   const detailsId = useId();
   const { t, lang } = useLanguage();
@@ -237,6 +265,9 @@ function EventRow({ event, busy, error, onEdit, onActivate, onClose, onDelete }:
             )}
             {event.status === "DRAFT" && (
               <Button variant="ghost" size="sm" onClick={onDelete} disabled={busy} className="text-deny-700! hover:bg-deny-50 max-sm:min-h-11">{t("aevents.delete")}</Button>
+            )}
+            {canPurge(event) && (
+              <Button variant="ghost" size="sm" onClick={onPurge} disabled={busy} className="text-deny-700! hover:bg-deny-50 max-sm:min-h-11">{t("aevents.purge")}</Button>
             )}
           </div>
         </td>

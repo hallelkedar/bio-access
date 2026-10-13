@@ -181,7 +181,18 @@ class RekognitionFaceProvider(FaceProvider):
             )
         return None
 
-    # Implemented in later BUILD_PLAN steps.
+    def delete_face(self, event_id: int, face_id: str) -> None:
+        """DeleteFaces for one face. Already gone (face or whole collection) counts as success."""
+        try:
+            response = self._client.delete_faces(CollectionId=collection_id_for(event_id), FaceIds=[face_id])
+        except ClientError as exc:
+            if _error_code(exc) == "ResourceNotFoundException":
+                return
+            raise FaceProviderError(f"delete_faces failed: {_error_code(exc)}") from None
+        except BotoCoreError as exc:
+            raise FaceProviderError(f"delete_faces failed: {type(exc).__name__}") from None
 
-    def delete_face(self, event_id: int, face_id: str) -> None:  # 6.8
-        raise NotImplementedError
+        for failure in response.get("UnsuccessfulFaceDeletions", []):
+            reasons = [str(r) for r in failure.get("Reasons", []) if r != "FACE_NOT_FOUND"]
+            if reasons:
+                raise FaceProviderError(f"delete_faces failed: {', '.join(reasons)}")

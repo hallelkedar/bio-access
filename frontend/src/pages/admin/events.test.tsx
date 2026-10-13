@@ -48,6 +48,8 @@ async function row(name: string) {
 
 describe("EventsAdminPage", () => {
   it("lists every status with the right actions", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] }); // before the factory's December dates: ACTIVE isn't over yet
+    vi.setSystemTime(new Date(2026, 9, 12, 10, 0));
     renderAdmin();
 
     const draft = await row("Draft Party");
@@ -58,9 +60,55 @@ describe("EventsAdminPage", () => {
     const live = await row("Live Show");
     expect(live.getByRole("button", { name: "Close" })).toBeInTheDocument();
     expect(live.queryByRole("button", { name: "Delete" })).not.toBeInTheDocument();
+    expect(live.queryByRole("button", { name: "Delete face data" })).not.toBeInTheDocument();
+    expect(draft.queryByRole("button", { name: "Delete face data" })).not.toBeInTheDocument();
 
     const old = await row("Old Gig");
-    expect(old.queryByRole("button", { name: /Activate|Close|Delete/ })).not.toBeInTheDocument();
+    expect(old.queryByRole("button", { name: /^(Activate|Close|Delete)$/ })).not.toBeInTheDocument();
+    expect(old.getByRole("button", { name: "Delete face data" })).toBeInTheDocument();
+  });
+
+  it("offers face data deletion for an ACTIVE event that has already ended", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(new Date(2026, 11, 2, 10, 0)); // the day after the factory's event
+    renderAdmin();
+
+    expect((await row("Live Show")).getByRole("button", { name: "Delete face data" })).toBeInTheDocument();
+  });
+
+  it("delete face data asks first, then says how many faces went", async () => {
+    admin.purgeBiometrics.mockResolvedValue({ event_id: 3, deleted_profiles: 12 });
+    const user = renderAdmin();
+
+    await user.click((await row("Old Gig")).getByRole("button", { name: "Delete face data" }));
+    const dialog = screen.getByRole("dialog", { name: /Delete the face data of .*Old Gig/ });
+    expect(dialog).toHaveTextContent("can't be undone");
+    expect(admin.purgeBiometrics).not.toHaveBeenCalled();
+    await user.click(within(dialog).getByRole("button", { name: "Delete face data" }));
+
+    expect(admin.purgeBiometrics).toHaveBeenCalledWith(3);
+    expect(await screen.findByText(/Deleted 12 faces from .*Old Gig/)).toBeInTheDocument();
+    expect(await row("Old Gig")).toBeTruthy(); // the event itself stays
+  });
+
+  it("says when there was no face data left", async () => {
+    admin.purgeBiometrics.mockResolvedValue({ event_id: 3, deleted_profiles: 0 });
+    const user = renderAdmin();
+
+    await user.click((await row("Old Gig")).getByRole("button", { name: "Delete face data" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete face data" }));
+
+    expect(await screen.findByText(/Old Gig.* has no face data left/)).toBeInTheDocument();
+  });
+
+  it("explains in the row when the face service is down", async () => {
+    admin.purgeBiometrics.mockRejectedValue(httpError(503, "face service unavailable, try again"));
+    const user = renderAdmin();
+
+    await user.click((await row("Old Gig")).getByRole("button", { name: "Delete face data" }));
+    await user.click(within(screen.getByRole("dialog")).getByRole("button", { name: "Delete face data" }));
+
+    expect(await (await row("Old Gig")).findByRole("alert")).toHaveTextContent("nothing was deleted");
   });
 
   it("creates an event with cents and UTC times", async () => {

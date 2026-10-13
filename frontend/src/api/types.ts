@@ -36,6 +36,8 @@ export interface Event {
   price_cents: number;
   currency: string;
   status: "DRAFT" | "ACTIVE" | "CLOSED";
+  /** When gates start admitting: starts_at minus the server's GATE_OPENS_MINUTES_BEFORE. */
+  gate_opens_at: string;
 }
 
 export interface Ticket {

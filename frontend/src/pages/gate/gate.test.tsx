@@ -6,7 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import * as eventsApi from "../../api/events";
 import * as gateApi from "../../api/gate";
 import { installFakeCamera } from "../../test/fakeCamera";
-import { makeEvent } from "../../test/factories.events";
+import { liveEvent } from "../../test/factories.events";
 import { GatePage } from "./GatePage";
 
 vi.mock("../../api/events");
@@ -19,7 +19,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   installFakeCamera();
   localStorage.clear();
-  events.listEvents.mockResolvedValue([makeEvent(), makeEvent({ id: 8, name: "Winter Gala" })]);
+  events.listEvents.mockResolvedValue([liveEvent(), liveEvent({ id: 8, name: "Winter Gala" })]);
 });
 
 afterEach(() => {
@@ -107,4 +107,69 @@ describe("GatePage scanning", () => {
     expect(fake.getImageData).toHaveBeenCalled(); // motion check ran on real thumbnails
     expect(gate.verifyFace).not.toHaveBeenCalled(); // static picture: no request
   });
+
+  describe("outside the event's gate hours", () => {
+    const soon = (ms: number) => new Date(Date.now() + ms).toISOString();
+    async function startOnly(user: ReturnType<typeof userEvent.setup>) { // the only event is preselected
+      await user.type(await screen.findByLabelText("Gate name"), "north-1");
+      await user.click(screen.getByRole("button", { name: "Start" }));
+    }
+
+    it("labels an event that isn't open yet in the picker", async () => {
+      events.listEvents.mockResolvedValue([liveEvent({ id: 9, name: "Gala", starts_at: soon(5 * 3_600_000), gate_opens_at: soon(4 * 3_600_000), ends_at: soon(8 * 3_600_000) })]);
+      renderGate();
+
+      const option = await screen.findByRole("option", { name: /^Gala · opens / });
+      expect(option).toBeInTheDocument();
+    });
+
+    it("keeps the camera off before the doors open and sends nothing", async () => {
+      const { getUserMedia } = installFakeCamera();
+      events.listEvents.mockResolvedValue([liveEvent({ id: 9, name: "Gala", starts_at: soon(5 * 3_600_000), gate_opens_at: soon(4 * 3_600_000), ends_at: soon(8 * 3_600_000) })]);
+      const user = renderGate();
+
+      await startOnly(user);
+
+      expect(await screen.findByTestId("gate-closed")).toHaveTextContent(/The gate opens .*the camera turns on by itself/);
+      expect(screen.getByRole("status")).toHaveTextContent("Not open yet");
+      expect(screen.getByRole("button", { name: "QR fallback" })).toBeDisabled();
+      expect(getUserMedia).not.toHaveBeenCalled();
+      expect(gate.verifyFace).not.toHaveBeenCalled();
+    });
+
+    it("turns the camera on by itself when the doors open", async () => {
+      const { getUserMedia } = installFakeCamera();
+      events.listEvents.mockResolvedValue([liveEvent({ id: 9, name: "Gala", gate_opens_at: soon(1500) })]);
+      const user = renderGate();
+      await startOnly(user);
+      expect(await screen.findByTestId("gate-closed")).toBeInTheDocument();
+
+      await waitFor(() => expect(getUserMedia).toHaveBeenCalled(), { timeout: 4000 });
+      expect(screen.queryByTestId("gate-closed")).not.toBeInTheDocument();
+    });
+
+    it("gives the date for a gate that opens weeks from now, without a countdown", async () => {
+      events.listEvents.mockResolvedValue([liveEvent({ id: 9, name: "Gala", starts_at: soon(30 * 86_400_000), gate_opens_at: soon(29 * 86_400_000), ends_at: soon(31 * 86_400_000) })]);
+      const user = renderGate();
+      await startOnly(user);
+
+      const panel = await screen.findByTestId("gate-closed");
+      const day = new Date(Date.now() + 29 * 86_400_000).getDate();
+      expect(panel).toHaveTextContent(new RegExp(`The gate opens .*\\b${day}\\b`));
+      expect(panel).not.toHaveTextContent(/\bin \d/);
+    });
+
+    it("says the event has ended and keeps the camera off", async () => {
+      const { getUserMedia } = installFakeCamera();
+      localStorage.setItem("bioaccess.gate", JSON.stringify({ eventId: 9, gateId: "north-1" }));
+      events.listEvents.mockResolvedValue([liveEvent({ id: 9, name: "Gala", ends_at: soon(1500) })]);
+      const user = renderGate();
+      await user.click(await screen.findByRole("button", { name: "Start" }));
+
+      expect(await screen.findByTestId("gate-closed", {}, { timeout: 4000 })).toHaveTextContent("This event has ended");
+      await waitFor(() => expect(screen.getByRole("status")).toHaveTextContent("Ended"));
+      expect(getUserMedia).toHaveBeenCalledTimes(1); // it was on while the gate was open, and wasn't restarted
+    });
+  });
 });
+

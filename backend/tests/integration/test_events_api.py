@@ -1,9 +1,11 @@
 from collections.abc import Callable
+from datetime import datetime, timedelta
 
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
+from app.core.config import get_settings
 from app.models.event import Event, EventStatus
 from app.models.user import User, UserRole
 from app.providers.face.fake import FakeFaceProvider
@@ -33,6 +35,14 @@ def test_admin_creates_event(client: TestClient, make_user: MakeUser, auth_heade
     assert body["status"] == "DRAFT"
     assert body["created_by"] == admin.id
     assert "face_collection_id" not in body
+
+
+def test_event_says_when_its_gates_open(client: TestClient, make_user: MakeUser, auth_headers: Headers) -> None:
+    created = client.post(URL, json=BODY, headers=auth_headers(make_user(UserRole.ADMIN))).json()
+
+    opens = datetime.fromisoformat(created["gate_opens_at"])
+    starts = datetime.fromisoformat(created["starts_at"])
+    assert starts - opens == timedelta(minutes=get_settings().gate_opens_minutes_before)  # same rule as the gate
 
 
 @pytest.mark.parametrize("role", [UserRole.USER, UserRole.GATEKEEPER])

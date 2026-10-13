@@ -9,7 +9,7 @@ import type { AccessReason } from "../../api/gate";
 import { DENIAL_TEXT, denialText, hintText } from "../../gate/messages";
 import { LANG_STORAGE_KEY, LanguageProvider } from "../../i18n/LanguageProvider";
 import { installFakeCamera } from "../../test/fakeCamera";
-import { makeEvent } from "../../test/factories.events";
+import { liveEvent } from "../../test/factories.events";
 import { GatePage } from "./GatePage";
 
 vi.mock("../../api/events");
@@ -20,7 +20,7 @@ const REASONS = Object.keys(DENIAL_TEXT) as AccessReason[];
 
 beforeEach(() => {
   installFakeCamera();
-  vi.mocked(eventsApi.listEvents).mockResolvedValue([makeEvent({ id: 7, name: "Summer Concert" })]);
+  vi.mocked(eventsApi.listEvents).mockResolvedValue([liveEvent({ id: 7, name: "Summer Concert" })]);
 });
 
 afterEach(() => {

@@ -7,7 +7,7 @@ import * as eventsApi from "../../api/events";
 import * as gateApi from "../../api/gate";
 import type { GateDecision } from "../../api/gate";
 import { installFakeCamera } from "../../test/fakeCamera";
-import { makeEvent } from "../../test/factories.events";
+import { liveEvent } from "../../test/factories.events";
 import { GatePage } from "./GatePage";
 
 vi.mock("../../api/events");
@@ -21,7 +21,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   installFakeCamera();
   localStorage.clear();
-  vi.mocked(eventsApi.listEvents).mockResolvedValue([makeEvent({ id: 8, name: "Winter Gala" })]);
+  vi.mocked(eventsApi.listEvents).mockResolvedValue([liveEvent({ id: 8, name: "Winter Gala" })]);
 });
 
 afterEach(() => {

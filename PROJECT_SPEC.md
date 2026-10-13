@@ -2,6 +2,8 @@
 
 > For Claude Code / Cursor. Read this file and BUILD_PLAN.md before generating code. Follow the architecture and rules below. Work in small steps, one BUILD_PLAN step at a time. If something is ambiguous, ask.
 
+> **As built:** where the finished system differs from this plan, [§19](#19-changes-from-this-spec-as-built) lists each change and why.
+
 ## 1. Overview
 
 **BioAccess** — real-time biometric ticketing and access-control system.
@@ -356,3 +358,18 @@ Project location, advisor details, hours/team split, equipment, software, new kn
 6. Every new service function gets a unit test.
 7. Small steps: follow BUILD_PLAN.md, explain the plan first, one commit per step.
 8. Ask before adding dependencies.
+
+## 19. Changes from this spec (as built)
+
+The sections above are the original plan. These are the deliberate differences in the finished
+system; everything else was built as specified.
+
+| Spec | As built | Why |
+|---|---|---|
+| §8, §9.3: the gate sends `{event_id, frames[]}` | One JPEG frame per request, as the raw body (`POST /api/gate/verify?event_id&gate_id`) | The terminal sends only when motion shows someone stepped in, one request at a time; one frame keeps latency low, and a raw body is never written to a temp file (multipart can be) |
+| §8: `WS /ws/admin?token=...` | Token sent in the first WebSocket message; the connection closes after 5 s without it | URLs end up in proxy and server logs; a token must never be logged (§12) |
+| §8: messages `access_event` \| `stats_update` | `access_event` only (plus `connected`/`pong`) | The dashboard reloads its stats when an `access_event` arrives, so a separate message was never needed |
+| §9.3, §10, §16: liveness check, `LIVENESS_FAILED` | Not built (BUILD_PLAN 6.7 was optional). The reason stays in the database enum and the UI texts, for a later version | Rekognition Face Liveness needs its own client widget; a basic multi-frame check is easy to fool. Listed as a known limitation; `test_case_02` documents it as an expected failure |
+| §10: collection deleted on close/purge | Deleted only by the admin's **Delete face data** (`POST /api/admin/events/{id}/purge-biometrics`, CLOSED or finished events) | Closing is reversible (an event can be reopened); deleting faces isn't, so it is a separate, confirmed action |
+| §10: borderline similarity → QR as second factor | Not built: below the threshold is NOT_RECOGNIZED, and the gatekeeper can use QR | One clear rule at the gate; the threshold itself is adjustable in Admin → Settings |
+| §10: client compresses frames (e.g. 480 px, JPEG/WebP) | JPEG at the camera's resolution (about 1280×720) | Rekognition accepts only JPEG/PNG; larger frames match more reliably and stay well under the 2 MB upload limit |

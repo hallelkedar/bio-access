@@ -12,6 +12,7 @@ render on GitHub and in VS Code and stay next to the code; SVG exports are in
 6. [Ticket state machine](#6-ticket-state-machine)
 7. [Data model](#7-data-model)
 8. [Docker deployment](#8-docker-deployment)
+9. [Biometric deletion](#9-biometric-deletion)
 
 ---
 
@@ -121,7 +122,8 @@ sequenceDiagram
 ## 4. Face enrollment flow
 
 The photo exists only in memory: it is read from the raw request body (never a temp file),
-sent to the provider, and dropped. Only the provider's `face_id` is stored.
+sent to the provider, and dropped. Only the provider's `face_id` is stored. Changing the photo
+later indexes the new face first, then deletes the old one from the provider.
 
 ```mermaid
 sequenceDiagram
@@ -300,4 +302,41 @@ flowchart LR
     env -.-> backend
     vols -.-> db
     vols -.-> backend
+```
+
+## 9. Biometric deletion
+
+Faces are needed only at the gate. Once an event is CLOSED or over, an admin deletes all of its
+faces with one click (**Delete face data**). The provider goes first: if it fails, the database is
+untouched and the admin retries; a collection that is already gone counts as success, so
+repeating is safe (the second run reports 0).
+
+```mermaid
+sequenceDiagram
+    actor A as Admin
+    participant UI as Admin → Events
+    participant API as Backend
+    participant F as Face provider (Rekognition)
+    participant DB as PostgreSQL
+
+    A->>UI: Delete face data → confirm (can't be undone)
+    UI->>API: POST /api/admin/events/{id}/purge-biometrics
+    API->>API: event CLOSED or ends_at passed?
+    alt still open
+        API-->>UI: 409 → "Close the event first"
+    else closed or over
+        API->>F: DeleteCollection(event) — every face of the event
+        alt provider down
+            F-->>API: error
+            API-->>UI: 503, nothing deleted → retry later
+        else deleted (or already gone)
+            rect rgb(235, 245, 255)
+            note over API,DB: one transaction
+            API->>DB: delete biometric_profiles of the event's tickets
+            API->>DB: events.face_collection_id = NULL
+            end
+            API-->>UI: 200 {deleted_profiles: n} → "Deleted n faces"
+        end
+    end
+    note over A,DB: Reopening the event creates an empty collection:<br/>visitors set up face entry again (QR works meanwhile)
 ```

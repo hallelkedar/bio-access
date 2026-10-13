@@ -4,13 +4,15 @@ import { apiErrorMessage } from "../../api/errors";
 import { listEvents } from "../../api/events";
 import { verifyQr, type GateDecision } from "../../api/gate";
 import type { Event } from "../../api/types";
+import type { Lang } from "../../i18n/translate";
 import { Camera } from "../../components/Camera";
 import { ErrorBox } from "../../components/ErrorBox";
 import { FormField } from "../../components/FormField";
 import { Spinner } from "../../components/Spinner";
-import { localeFor } from "../../format";
+import { formatRelative, localeFor } from "../../format";
 import { GateResult } from "../../gate/GateResult";
 import { loadGateSetup, saveGateSetup, type GateSetup } from "../../gate/gateSetup";
+import { gateWindow, type GateWindow } from "../../gate/gateWindow";
 import { denialText, hintText } from "../../gate/messages";
 import { grayThumbnail, hasMotion } from "../../gate/motion";
 import { feedView, PRESENCE_THRESHOLD } from "../../gate/presence";
@@ -46,8 +48,9 @@ function SetupForm({ events, onStart }: { events: Event[]; onStart: (setup: Gate
   const remembered = loadGateSetup();
   const initialEvent = events.some((e) => e.id === remembered?.eventId) ? remembered!.eventId : events[0]?.id;
   const [eventId, setEventId] = useState<number | undefined>(initialEvent);
-  const { t } = useLanguage();
+  const { t, lang } = useLanguage();
   const [gateId, setGateId] = useState(remembered?.gateId ?? "");
+  const now = new Date();
 
   function submit(e: FormEvent) {
     e.preventDefault();
@@ -70,7 +73,11 @@ function SetupForm({ events, onStart }: { events: Event[]; onStart: (setup: Gate
           <label htmlFor="event" className="block text-sm font-medium text-slate-700">{t("gate.event")}</label>
           <select id="event" value={eventId} onChange={(e) => setEventId(Number(e.target.value))}
             className="mt-1 w-full rounded-md border border-slate-300 px-3 py-2">
-            {events.map((e) => <option key={e.id} value={e.id}>{e.name}</option>)}
+            {events.map((e) => (
+              <option key={e.id} value={e.id}>
+                {gateWindow(e, now) === "before" ? `${e.name} · ${t("gate.opensAt", { time: openingTime(e, lang) })}` : e.name}
+              </option>
+            ))}
           </select>
         </div>
         <FormField label={t("gate.gateName")} name="gate" required maxLength={64} placeholder="north-1" value={gateId}
@@ -109,10 +116,13 @@ function Terminal({ event, gateId, onStop, scannerOptions }: {
     }
     return thumbnail;
   }, [camera.videoRef]);
+  // Outside the event's gate hours the camera isn't even started: the server would refuse every scan.
+  const hours = gateWindow(event, now);
+  const open = hours === "open";
   const { state, showDecision } = useGateScanner({
-    camera, eventId: event.id, gateId, enabled: !paused, sampleFrame, options: scannerOptions,
+    camera, eventId: event.id, gateId, enabled: open && !paused, sampleFrame, options: scannerOptions,
   });
-  const status = STATUS_STYLE[terminalStatus(state, paused)];
+  const status = open ? STATUS_STYLE[terminalStatus(state, paused)] : CLOSED_STYLE[hours];
   // The clock re-renders every second, which is what turns the feed off after the last movement.
   const view = feedView({ paused, phase: state.phase, lastMotionAt: Math.max(lastMotionAt, presence.current.motionAt), now: now.getTime() });
 
@@ -142,10 +152,10 @@ function Terminal({ event, gateId, onStop, scannerOptions }: {
             {new Intl.DateTimeFormat(localeFor(lang), { hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23" }).format(now)}
           </time>
           <div className="ms-auto flex flex-wrap gap-2">
-            <button type="button" onClick={() => setPaused((p) => !p)} className={darkButton}>
+            <button type="button" onClick={() => setPaused((p) => !p)} className={darkButton} disabled={!open}>
               {paused ? t("gate.resume") : t("gate.pause")}
             </button>
-            <button type="button" onClick={() => setQrOpen((o) => !o)} className={darkButton}>
+            <button type="button" onClick={() => setQrOpen((o) => !o)} className={darkButton} disabled={!open}>
               {t("gate.qrFallback")}
             </button>
             <button type="button" onClick={onStop} className={darkButton}>{t("gate.changeGate")}</button>
@@ -157,11 +167,15 @@ function Terminal({ event, gateId, onStop, scannerOptions }: {
           </p>
         )}
         <div className="overflow-hidden rounded-2xl shadow-raised ring-1 ring-white/10">
-          <Camera camera={camera} hidden={view !== "live"} standby={<Standby paused={view === "paused"} />}>
-            <ScanFrame phase={paused ? "paused" : state.phase} />
-          </Camera>
+          {open ? (
+            <Camera camera={camera} hidden={view !== "live"} standby={<Standby paused={view === "paused"} />}>
+              <ScanFrame phase={paused ? "paused" : state.phase} />
+            </Camera>
+          ) : (
+            <GateClosed event={event} hours={hours} now={now} />
+          )}
         </div>
-        {qrOpen && <QrPanel eventId={event.id} gateId={gateId} onDecision={showDecision} />}
+        {open && qrOpen && <QrPanel eventId={event.id} gateId={gateId} onDecision={showDecision} />}
         <div className="flex flex-wrap items-center gap-x-6 gap-y-1 border-t border-border pt-3 text-sm text-muted">
           <span className="inline-flex items-center gap-2" data-testid="tally-approved">
             <span className="h-2 w-2 rounded-full bg-emerald-400" aria-hidden="true" />
@@ -194,7 +208,46 @@ function Standby({ paused }: { paused: boolean }) {
   );
 }
 
-const darkButton = "rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-white/10 active:bg-white/15";
+const CLOSED_STYLE: Record<Exclude<GateWindow, "open">, (typeof STATUS_STYLE)[keyof typeof STATUS_STYLE]> = {
+  before: { key: "gate.status.notOpen", dot: "bg-slate-400", chip: "bg-slate-500/15 text-slate-200 ring-slate-400/30" },
+  ended: { key: "gate.status.ended", dot: "bg-slate-400", chip: "bg-slate-500/15 text-slate-200 ring-slate-400/30" },
+};
+
+/** "Wed, Oct 14, 07:00" in the operator's language: the date too, since it can be weeks away. */
+function openingTime(event: Event, lang: Lang): string {
+  return new Intl.DateTimeFormat(localeFor(lang), {
+    weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", hourCycle: "h23",
+  }).format(new Date(event.gate_opens_at));
+}
+
+const WEEK_MS = 7 * 86_400_000;
+
+/** Instead of the camera before the doors open or after the event: the camera stays off. */
+function GateClosed({ event, hours, now }: { event: Event; hours: Exclude<GateWindow, "open">; now: Date }) {
+  const { t, lang } = useLanguage();
+  return (
+    <div data-testid="gate-closed" className="flex aspect-video w-full flex-col items-center justify-center bg-slate-900 px-6 text-center">
+      <svg viewBox="0 0 48 48" className="h-14 w-14 text-accent-300/70" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" aria-hidden="true">
+        <circle cx="24" cy="24" r="17" />
+        <path d={hours === "before" ? "M24 14v10l7 4" : "M17 17l14 14M31 17L17 31"} />
+      </svg>
+      {hours === "before" ? (
+        <>
+          <p className="mt-3 text-lg font-medium">{t("gate.closed.opensAt", { time: openingTime(event, lang) })}</p>
+          <p className="mt-1 text-muted">
+            {/* "in 14 hr." helps on the day; weeks away, the date above says it all. */}
+            {new Date(event.gate_opens_at).getTime() - now.getTime() < WEEK_MS && `${formatRelative(event.gate_opens_at, now, lang)} · `}
+            {t("gate.closed.cameraOff")}
+          </p>
+        </>
+      ) : (
+        <p className="mt-3 text-lg font-medium">{t("gate.closed.ended")}</p>
+      )}
+    </div>
+  );
+}
+
+const darkButton = "rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-white/10 active:bg-white/15 disabled:pointer-events-none disabled:opacity-40";
 
 function ResultOverlay({ decision }: { decision: GateDecision }) {
   const approved = decision.result === "APPROVED";

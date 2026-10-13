@@ -1,6 +1,8 @@
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import AwareDatetime, BaseModel, ConfigDict, Field, computed_field, field_validator, model_validator
+
+from app.core.config import get_settings
 
 from app.models.event import EventStatus
 
@@ -73,3 +75,9 @@ class EventRead(BaseModel):
     currency: str
     status: EventStatus
     created_by: int
+
+    @computed_field
+    @property
+    def gate_opens_at(self) -> datetime:
+        """When gates start admitting (GATE_OPENS_MINUTES_BEFORE before the start), as the gate checks it."""
+        return self.starts_at - timedelta(minutes=get_settings().gate_opens_minutes_before)

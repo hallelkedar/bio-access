@@ -38,7 +38,7 @@ def test_dead_client_is_dropped_others_still_receive() -> None:
     async def scenario() -> int:
         await manager.connect(alive)  # type: ignore[arg-type]
         await manager.connect(dead)  # type: ignore[arg-type]
-        return await manager.broadcast(WsMessage(type="stats_update"))
+        return await manager.broadcast(WsMessage(type="pong"))
 
     assert asyncio.run(scenario()) == 1
     assert len(alive.sent) == 1
@@ -53,7 +53,7 @@ def test_disconnect_removes_client() -> None:
         await manager.connect(socket)  # type: ignore[arg-type]
         await manager.disconnect(socket)  # type: ignore[arg-type]
         await manager.disconnect(socket)  # type: ignore[arg-type]  # twice: no error
-        await manager.broadcast(WsMessage(type="stats_update"))
+        await manager.broadcast(WsMessage(type="pong"))
 
     asyncio.run(scenario())
     assert socket.sent == []

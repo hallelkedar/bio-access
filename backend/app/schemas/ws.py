@@ -9,7 +9,7 @@ from app.models.access_log import AccessMethod, AccessReason, AccessResult
 class WsMessage(BaseModel):
     """Every message the server pushes to admin dashboards."""
 
-    type: Literal["connected", "pong", "access_event", "stats_update"]
+    type: Literal["connected", "pong", "access_event"]
     payload: dict[str, Any] = Field(default_factory=dict)
 
 

@@ -28,7 +28,6 @@ services:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-bioaccess}:${POSTGRES_PASSWORD:-bioaccess}@db:5432/${POSTGRES_DB:-bioaccess}
       FRONTEND_URL: ${PUBLIC_URL:-https://localhost}
       CORS_ORIGINS: ${PUBLIC_URL:-https://localhost}
-      API_PUBLIC_URL: ${PUBLIC_URL:-https://localhost}
       DEMO_FACES_FILE: /data/demo_faces.json
     volumes:
       - media:/app/media

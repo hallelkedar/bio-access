@@ -11,18 +11,18 @@ from app.providers.storage.local_fake import LocalStorage
 from app.providers.storage.s3 import S3Storage
 
 
-def test_local_storage_writes_file_and_returns_media_url(tmp_path: Path) -> None:
-    storage = LocalStorage(tmp_path, "http://localhost:8000/")
+def test_local_storage_writes_file_and_returns_site_relative_url(tmp_path: Path) -> None:
+    storage = LocalStorage(tmp_path)
 
     url = storage.upload("event-covers/1/abc.png", b"data", "image/png")
 
-    assert url == "http://localhost:8000/media/event-covers/1/abc.png"
+    assert url == "/media/event-covers/1/abc.png"  # no host: works from any address the app is opened on
     assert (tmp_path / "event-covers/1/abc.png").read_bytes() == b"data"
 
 
 def test_local_storage_rejects_path_escape(tmp_path: Path) -> None:
     with pytest.raises(ValueError):
-        LocalStorage(tmp_path / "media", "http://x").upload("../evil.png", b"x", "image/png")
+        LocalStorage(tmp_path / "media").upload("../evil.png", b"x", "image/png")
 
 
 def test_s3_storage_puts_object_and_returns_url() -> None:
